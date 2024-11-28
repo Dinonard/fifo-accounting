@@ -1,0 +1,9 @@
+[package]
+name = "fifo-accounting"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+calamine = "0.26.1"
+chrono = "0.4.38"
+rust_decimal = "1.36.0"
