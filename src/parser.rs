@@ -2,6 +2,10 @@
 // Ideally it will be configurable via a static config file, to speed up further usage.
 
 use calamine::{open_workbook, Data, DataType, Reader, Xlsx};
+use rust_decimal::Decimal;
+use std::str::FromStr;
+
+use crate::types::{Transaction, TransactionType};
 
 pub fn read_excel_file(
     file_path: &str,
@@ -13,16 +17,21 @@ pub fn read_excel_file(
     if let Ok(range) = workbook.worksheet_range(sheet_name) {
         let mut row_number = start_row;
 
+        let file_name = file_path
+            .split('/')
+            .last()
+            .expect("File was opened hence it should have a name");
+        let context_message = format!("File: '{}', Sheet: '{}'", file_name, row_number);
+
         // 1. Iterate over the rows, and validate data.
         for row in range.rows().skip(start_row) {
-            // Stop reading when the first date cell is empty
-            // TODO: improve this since we might accidentally miss some data.
+            // Stop reading when the first date cell is empty.
             if let Some(Data::Empty) = row.get(1) {
                 break;
             }
 
-            if !validate_row(&row) {
-                println!("Row {} is invalid.", row_number);
+            if let Err(message) = validate_row(&row, &context_message) {
+                log::error!("{}", message);
             }
 
             row_number += 1;
@@ -47,82 +56,140 @@ pub fn read_excel_file(
     Ok(())
 }
 
-fn validate_row(row: &[Data]) -> bool {
-    // TODO: add row metadata for easier debugging (file name, sheet, row number, etc.)
-    // TODO2: function should return a parsed struct, not just boolean
+fn validate_row(row: &[Data], context: &str) -> Result<Transaction, String> {
     if row.len() < 9 {
-        log::error!("Row is too short, skipping: {:?}", row);
-        return false;
+        return Err(format!(
+            "{}, Row is too short, skipping: {:?}",
+            context, row
+        ));
     }
 
-    // TODO: verify it's an integer
-    if !row[0].is_float() {
-        log::error!(
-            "First column must be an ordinal (integer), skipping: {:?}",
-            row
-        );
-        return false;
+    // 1. Parse the ordinal value.
+    let ordinal = if let Data::Float(value) = row[0] {
+        value
+    } else {
+        return Err(format!(
+            "{}, First column must be an ordinal (integer), skipping: {:?}",
+            context, row
+        ));
+    };
+    if ordinal.fract() != 0.0 {
+        return Err(format!(
+            "{}, First column must be an ordinal (integer), skipping: {:?}",
+            context, row
+        ));
     }
+    let ordinal = ordinal as u32;
 
-    if !row[1].is_datetime() {
-        log::error!("Second column must be a date, skipping: {:?}", row);
-        return false;
-    }
+    // 2. Parse the date.
+    let date = if let Data::DateTime(date) = row[1] {
+        date
+    } else {
+        return Err(format!(
+            "{}, Second column must be a date, skipping: {:?}",
+            context, row
+        ));
+    };
+    let date = if let Some(date) = date.as_datetime() {
+        date
+    } else {
+        return Err(format!(
+            "{}, Cannot convert second column date to `Datetime`, skipping: {:?}",
+            context, row
+        ));
+    };
 
-    // TODO: introduce custom type & check against it
-    if !row[2].is_string() {
-        log::error!(
-            "Third column must be a string (action type), skipping: {:?}",
-            row
-        );
-        return false;
-    }
+    // 3. Parse the action type.
+    let action_type = if let Data::String(value) = &row[2] {
+        TransactionType::from_str(value).map_err(|_| {
+            format!(
+                "{}, Third column must be a valid action type, skipping: {:?}",
+                context, row
+            )
+        })?
+    } else {
+        return Err(format!(
+            "{}, Third column must be a string (action type), skipping: {:?}",
+            context, row
+        ));
+    };
 
+    // 4. Parse the input token.
     // TODO: introduce custom type & config file with allowed values
-    if !row[3].is_string() {
-        log::error!(
-            "Fourth column must be a string (token name), skipping: {:?}",
-            row
-        );
-        return false;
-    }
+    let input_token = if let Data::String(value) = &row[3] {
+        value
+    } else {
+        return Err(format!(
+            "{}, Fourth column must be a string (token name), skipping: {:?}",
+            context, row
+        ));
+    };
 
-    if !row[4].is_float() {
-        log::error!(
-            "Fifth column must be a decimal (token amount), skipping: {:?}",
-            row
-        );
-        return false;
-    }
+    // 5. Parse the input amount.
+    let input_amount = if let Data::Float(_) = row[4] {
+        Decimal::from_str(
+            &row[4]
+                .as_string()
+                .expect("Float can be converted to string"),
+        )
+        .expect("It's string representation of a float")
+    } else {
+        return Err(format!(
+            "{}, Fifth column must be a decimal (token amount), skipping: {:?}",
+            context, row
+        ));
+    };
 
-    if !row[5].is_string() {
-        log::error!(
-            "Sixth column must be a string (token name), skipping: {:?}",
-            row
-        );
-        return false;
-    }
+    // 6. Parse the output token.
+    let output_token = if let Data::String(value) = &row[5] {
+        value
+    } else {
+        return Err(format!(
+            "{}, Sixth column must be a string (token name), skipping: {:?}",
+            context, row
+        ));
+    };
 
-    if !row[6].is_float() {
-        log::error!(
-            "Seventh column must be a decimal (token amount), skipping: {:?}",
-            row
-        );
-        return false;
-    }
+    // 7. Parse the output amount.
+    let output_amount = if let Data::Float(_) = row[6] {
+        Decimal::from_str(
+            &row[6]
+                .as_string()
+                .expect("Float can be converted to string"),
+        )
+        .expect("It's string representation of a float")
+    } else {
+        return Err(format!(
+            "{}, Seventh column must be a decimal (token amount), skipping: {:?}",
+            context, row
+        ));
+    };
 
-    if !row[7].is_string() {
-        log::error!("Eighth column must be a string (note), skipping: {:?}", row);
-        return false;
-    }
+    // 8. Parse the note.
+    let note = if let Data::String(value) = &row[7] {
+        value
+    } else {
+        return Err(format!(
+            "{}, Eighth column must be a string (note), skipping: {:?}",
+            context, row
+        ));
+    };
 
-    if !row[8].is_string() && !row[8].is_empty() {
-        log::error!(
-            "Ninth column, if present, must be a string (extra info), skipping: {:?}",
-            row
-        );
-        return false;
-    }
+    // 9. Parse the extra info, if present. Not important.
+    let _maybe_extra_info = if let Data::String(value) = &row[8] {
+        Some(value)
+    } else {
+        None
+    };
 
-    true
+    Ok(Transaction::new(
+        ordinal,
+        date,
+        action_type,
+        input_token.to_string(),
+        input_amount,
+        output_token.to_string(),
+        output_amount,
+        note.to_string(),
+    ))
 }
