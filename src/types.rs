@@ -52,15 +52,20 @@ pub struct Transaction {
     date: NaiveDateTime,
     /// Type of transaction (e.g. selling or a swap)
     tx_type: TransactionType,
+    /// Type of the input token.
     input_type: String, // TODO: combine type with amount?
+    /// Amount of the input token.
     input_amount: Decimal,
+    /// Type of the output token.
     output_type: String,
+    /// Amount of the output token.
     output_amount: Decimal,
     /// Free text note about the transaction.
     note: String,
 }
 
 impl Transaction {
+    /// Create a new `Transaction` instance.
     pub fn new(
         ordinal: u32,
         date: NaiveDateTime,

@@ -30,8 +30,8 @@ pub fn read_excel_file(
                 break;
             }
 
-            if let Err(message) = validate_row(&row, &context_message) {
-                log::error!("{}", message);
+            if let Err(message) = parse_row(&row) {
+                log::error!("{}, {}", context_message, message);
             }
 
             row_number += 1;
@@ -56,124 +56,96 @@ pub fn read_excel_file(
     Ok(())
 }
 
-fn validate_row(row: &[Data], context: &str) -> Result<Transaction, String> {
+/// Validate the row data against the expected format, and return the `Transaction`.
+/// Each row is validated on its own, without any context of the previous rows.
+///
+/// # Arguments
+/// * `row` - A row of data. Should be in the appropriate format.
+///
+/// # Returns
+/// * `Transaction` - If the row is valid, return the parsed transaction.
+/// * `String` - If the row is invalid, return an error message.
+fn parse_row(row: &[Data]) -> Result<Transaction, String> {
     if row.len() < 9 {
-        return Err(format!(
-            "{}, Row is too short, skipping: {:?}",
-            context, row
-        ));
+        return Err(format!("Row is too short, skipping: {:?}", row));
+    }
+
+    // Helper function to parse a float as a decimal
+    fn parse_decimal(data: &Data) -> Result<Decimal, String> {
+        if let Data::Float(_) = data {
+            Decimal::from_str(
+                &data
+                    .as_string()
+                    .expect("Float can be represented as string."),
+            )
+            .map_err(|e| format!("Cannot convert float to Decimal: {:?}", e))
+        } else {
+            Err(format!("Expected a decimal value, found: {:?}", data))
+        }
+    }
+
+    // Helper function to parse a string
+    fn parse_string(data: &Data) -> Result<&str, String> {
+        if let Data::String(value) = data {
+            Ok(value)
+        } else {
+            Err(format!("Expected a string, found: {:?}", data))
+        }
     }
 
     // 1. Parse the ordinal value.
-    let ordinal = if let Data::Float(value) = row[0] {
-        value
-    } else {
-        return Err(format!(
-            "{}, First column must be an ordinal (integer), skipping: {:?}",
-            context, row
-        ));
+    let ordinal = match row[0] {
+        Data::Float(value) if value.fract() == 0.0 => value as u32,
+        _ => {
+            return Err(format!(
+                "First column must be an ordinal (integer), skipping: {:?}",
+                row
+            ))
+        }
     };
-    if ordinal.fract() != 0.0 {
-        return Err(format!(
-            "{}, First column must be an ordinal (integer), skipping: {:?}",
-            context, row
-        ));
-    }
-    let ordinal = ordinal as u32;
 
     // 2. Parse the date.
-    let date = if let Data::DateTime(date) = row[1] {
-        date
-    } else {
-        return Err(format!(
-            "{}, Second column must be a date, skipping: {:?}",
-            context, row
-        ));
+    let date = match row[1] {
+        Data::DateTime(date) => date,
+        _ => return Err(format!("Second column must be a date, skipping: {:?}", row)),
     };
-    let date = if let Some(date) = date.as_datetime() {
-        date
-    } else {
-        return Err(format!(
-            "{}, Cannot convert second column date to `Datetime`, skipping: {:?}",
-            context, row
-        ));
-    };
+    let date = date.as_datetime().ok_or_else(|| {
+        format!(
+            "Cannot convert second column date to `Datetime`, skipping: {:?}",
+            row
+        )
+    })?;
 
     // 3. Parse the action type.
     let action_type = if let Data::String(value) = &row[2] {
         TransactionType::from_str(value).map_err(|_| {
             format!(
-                "{}, Third column must be a valid action type, skipping: {:?}",
-                context, row
+                "Third column must be a valid action type, skipping: {:?}",
+                row
             )
         })?
     } else {
         return Err(format!(
-            "{}, Third column must be a string (action type), skipping: {:?}",
-            context, row
+            "Third column must be a string (action type), skipping: {:?}",
+            row
         ));
     };
 
     // 4. Parse the input token.
     // TODO: introduce custom type & config file with allowed values
-    let input_token = if let Data::String(value) = &row[3] {
-        value
-    } else {
-        return Err(format!(
-            "{}, Fourth column must be a string (token name), skipping: {:?}",
-            context, row
-        ));
-    };
+    let input_token = parse_string(&row[3])?;
 
     // 5. Parse the input amount.
-    let input_amount = if let Data::Float(_) = row[4] {
-        Decimal::from_str(
-            &row[4]
-                .as_string()
-                .expect("Float can be converted to string"),
-        )
-        .expect("It's string representation of a float")
-    } else {
-        return Err(format!(
-            "{}, Fifth column must be a decimal (token amount), skipping: {:?}",
-            context, row
-        ));
-    };
+    let input_amount = parse_decimal(&row[4])?;
 
     // 6. Parse the output token.
-    let output_token = if let Data::String(value) = &row[5] {
-        value
-    } else {
-        return Err(format!(
-            "{}, Sixth column must be a string (token name), skipping: {:?}",
-            context, row
-        ));
-    };
+    let output_token = parse_string(&row[5])?;
 
     // 7. Parse the output amount.
-    let output_amount = if let Data::Float(_) = row[6] {
-        Decimal::from_str(
-            &row[6]
-                .as_string()
-                .expect("Float can be converted to string"),
-        )
-        .expect("It's string representation of a float")
-    } else {
-        return Err(format!(
-            "{}, Seventh column must be a decimal (token amount), skipping: {:?}",
-            context, row
-        ));
-    };
+    let output_amount = parse_decimal(&row[6])?;
 
     // 8. Parse the note.
-    let note = if let Data::String(value) = &row[7] {
-        value
-    } else {
-        return Err(format!(
-            "{}, Eighth column must be a string (note), skipping: {:?}",
-            context, row
-        ));
-    };
+    let note = parse_string(&row[7])?;
 
     // 9. Parse the extra info, if present. Not important.
     let _maybe_extra_info = if let Data::String(value) = &row[8] {
