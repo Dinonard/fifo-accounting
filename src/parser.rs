@@ -42,26 +42,24 @@ pub fn parse_xlsx_file(
                 break;
             }
 
-            match parse_row(row) {
-                Ok(transaction) => {
-                    transactions.push(transaction);
-                }
-                Err(message) => {
-                    log::error!("{}, {}", context_message, message);
-                }
-            }
+            transactions.push(parse_row(row).map_err(|message| {
+                format!(
+                    "Row {:?}, number {}, has invalid data - please check! Error: {}",
+                    row, row_number, message,
+                )
+            })?);
 
             row_number += 1;
         }
 
-        // 2. Ensure this & following cells are actually empty. This is to ensure we don't accidentally skip some data.
+        // 2. Ensure this & and a few following cells are actually empty.
+        // This is to ensure we don't accidentally skip some data.
         for row in range.rows().skip(row_number).take(3) {
             if row.get(1) != Some(&Data::Empty) {
-                log::error!(
+                return Err(format!(
                     "Row {:?}, number {}, has non-empty cells after the first empty cell - please check!",
                     row, row_number,
-                );
-                break;
+                ).into());
             }
 
             row_number += 1;
