@@ -16,7 +16,7 @@ use crate::types::{AssetType, Transaction, TransactionType};
 /// * `Transaction` - If the row is valid, return the parsed transaction.
 /// * `String` - If the row is invalid, return an error message.
 pub fn parse_row(row: &[Data]) -> Result<Transaction, String> {
-    if row.len() < 9 {
+    if row.len() < 8 {
         return Err(format!("Row is too short, skipping: {:?}", row));
     }
 
@@ -107,7 +107,7 @@ pub fn parse_row(row: &[Data]) -> Result<Transaction, String> {
     let note = parse_string(&row[7])?;
 
     // 9. Parse the extra info, if present. Not important.
-    let _maybe_extra_info = if let Data::String(value) = &row[8] {
+    let _maybe_extra_info = if let Some(Data::String(value)) = row.get(8) {
         Some(value)
     } else {
         None
@@ -125,10 +125,25 @@ pub fn parse_row(row: &[Data]) -> Result<Transaction, String> {
     ))
 }
 
-// TODO: it should probably return a map of the final state
+/// Validate the transactions in the sheet, and return the final state of the ledger.
+/// There are several checks performed:
+/// 1. The ordinal number should be sequential, starting at one and increasing by one.
+/// 2. The dates should be monotonically increasing.
+/// 3. The input amount should be subtracted from the state, and shouldn't result in a negative balance
+///    (with a small tolerance for floating point errors & missing fees entries).
+/// 4. The output amount should be added to the state, without any overflow.
+///
+/// # Arguments
+/// * `transaction` - A list of transactions to validate, in ascending order.
+/// * `init_state` - Initial state of the ledger, before the first transaction is applied.
+///
+/// # Returns
+/// * `HashMap<AssetType, Decimal>` - If the transactions are valid, return the final state of the ledger.
+/// * `String` - If the transactions are invalid, return an error message.
 pub fn validate_sheet(
     transaction: Vec<Transaction>,
     init_state: HashMap<AssetType, Decimal>,
+    sheet_name: &str,
 ) -> Result<HashMap<AssetType, Decimal>, String> {
     let mut previous_ordinal = 0;
     let mut previous_date = NaiveDateTime::default();
@@ -166,12 +181,24 @@ pub fn validate_sheet(
                     let entry = entry.get_mut();
 
                     if let Some(new_value) = entry.checked_sub(input_amount) {
-                        if new_value < Decimal::ZERO {
+                        // TODO: revise this later - tolerance should differ for different tokens
+                        if new_value < Decimal::ZERO
+                            && new_value > -Decimal::from_str("0.1").unwrap()
+                        {
+                            log::warn!(
+                                "Sheet: {}; Negative balance of {} for {:?} after transaction: {:?}",
+                                sheet_name,
+                                new_value,
+                                input_token,
+                                tx
+                            );
+                        } else if new_value < Decimal::ZERO {
                             return Err(format!(
-                                "Negative balance for {:?} after transaction: {:?}",
-                                input_token, tx
+                                "Negative balance of {} for {:?} after transaction: {:?}",
+                                new_value, input_token, tx
                             ));
                         }
+
                         *entry = new_value;
                     } else {
                         // This part should never happen, since `Decimal` supports negative numbers.
@@ -190,8 +217,27 @@ pub fn validate_sheet(
             }
         }
 
-        // TODO: continue here
+        // 3.2. Add the output amount in case it's not fiat.
+        if output_token.is_crypto() {
+            match state.entry(output_token) {
+                Entry::Occupied(mut entry) => {
+                    let entry = entry.get_mut();
+
+                    let new_value = entry.checked_add(output_amount).ok_or_else(|| {
+                        format!(
+                            "Overflow for {:?} after transaction: {:?}",
+                            output_token, tx
+                        )
+                    })?;
+
+                    *entry = new_value;
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(output_amount);
+                }
+            }
+        }
     }
 
-    return Ok(state);
+    Ok(state)
 }

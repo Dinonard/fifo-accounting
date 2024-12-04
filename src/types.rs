@@ -22,13 +22,15 @@ pub enum TransactionType {
     /// Asset was moved between two different blockchains, resulting in some tangible loss.
     Bridge,
     /// Non-fungible token was bought or sold.
-    NFT,
+    Nft,
     /// Asset was transferred between two wallets or CEXes, resulting in some tangible loss.
     Transfer,
     /// Asset was received as part of an airdrop.
     Airdrop,
     /// Asset was locked in some protocol.
     Lock,
+    /// Fees paid to execute transactions
+    Fees,
 }
 
 impl FromStr for TransactionType {
@@ -42,10 +44,11 @@ impl FromStr for TransactionType {
             "Buying" => Ok(TransactionType::Buying),
             "Selling" => Ok(TransactionType::Selling),
             "Bridge" => Ok(TransactionType::Bridge),
-            "NFT" => Ok(TransactionType::NFT),
+            "NFT" => Ok(TransactionType::Nft),
             "Transfer" => Ok(TransactionType::Transfer),
             "Airdrop" => Ok(TransactionType::Airdrop),
             "Lock" => Ok(TransactionType::Lock),
+            "Fees" => Ok(TransactionType::Fees),
             _ => Err(()),
         }
     }
@@ -60,6 +63,7 @@ impl Display for TransactionType {
 /// Represents an asset that can be traded or held in the 'ledger'.
 /// E.g. ASTR or BTC or USD (fiat).
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum AssetType {
     ASTR,
     SDN,
@@ -73,29 +77,25 @@ pub enum AssetType {
     HAHA,
     LockedAstr,
     PINK,
+    WBTC,
+    WETH,
     EMPTY,
 }
 
 impl AssetType {
     /// Check if the asset is a fiat currency.
     pub fn is_fiat(&self) -> bool {
-        match self {
-            Self::USD | Self::EUR => true,
-            _ => false,
-        }
+        matches!(self, Self::USD | Self::EUR)
     }
 
     /// Check if the asset is a cryptocurrency.
     pub fn is_crypto(&self) -> bool {
-        !self.is_fiat()
+        !self.is_fiat() && *self != Self::EMPTY
     }
 
     /// Check if the asset is a stablecoin.
     pub fn is_stablecoin(&self) -> bool {
-        match self {
-            Self::USDC | Self::USDT => true,
-            _ => false,
-        }
+        matches!(self, Self::USDC | Self::USDT)
     }
 }
 
@@ -126,13 +126,13 @@ impl FromStr for AssetType {
             "HAHA" => Ok(AssetType::HAHA),
             "LOCKED ASTR" => Ok(AssetType::LockedAstr),
             "PINK" => Ok(AssetType::PINK),
+            "WBTC" => Ok(AssetType::WBTC),
+            "WETH" => Ok(AssetType::WETH),
             "EMPTY" => Ok(AssetType::EMPTY),
             _ => Err(()),
         }
     }
 }
-
-// TODO: add pretty print for `Tranasction`
 
 /// Represents a single transaction that resulted in modification of the ledger.
 #[derive(Debug)]

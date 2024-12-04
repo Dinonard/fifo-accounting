@@ -33,6 +33,8 @@ pub fn parse_xlsx_file(
 
         let mut transactions = Vec::new();
 
+        // TODO: add a wrapper around row so it can be formatted more nicely?
+
         // 1. Iterate over the rows, and validate data.
         for row in range.rows().skip(start_row) {
             // Stop reading when the first date cell is empty.
@@ -40,7 +42,7 @@ pub fn parse_xlsx_file(
                 break;
             }
 
-            match parse_row(&row) {
+            match parse_row(row) {
                 Ok(transaction) => {
                     transactions.push(transaction);
                 }
@@ -53,7 +55,7 @@ pub fn parse_xlsx_file(
         }
 
         // 2. Ensure this & following cells are actually empty. This is to ensure we don't accidentally skip some data.
-        for row in range.rows().skip(row_number).take(10) {
+        for row in range.rows().skip(row_number).take(3) {
             if row.get(1) != Some(&Data::Empty) {
                 log::error!(
                     "Row {:?}, number {}, has non-empty cells after the first empty cell - please check!",
