@@ -1,8 +1,9 @@
 mod parser;
 mod types;
+mod validation;
 
 fn main() {
     env_logger::init();
 
-    parser::read_excel_file("balances.xlsx", "2024", 14).unwrap();
+    parser::parse_xlsx_file("balances.xlsx", "2024", 14).unwrap();
 }
