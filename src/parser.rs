@@ -44,8 +44,8 @@ pub fn parse_xlsx_file(
 
             transactions.push(parse_row(row).map_err(|message| {
                 format!(
-                    "Row {:?}, number {}, has invalid data - please check! Error: {}",
-                    row, row_number, message,
+                    "{}: Row {:?}, number {}, has invalid data - please check! Error: {}",
+                    context_message, row, row_number, message,
                 )
             })?);
 

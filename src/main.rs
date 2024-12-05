@@ -1,3 +1,4 @@
+mod fifo;
 mod parser;
 mod types;
 mod validation;

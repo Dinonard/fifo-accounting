@@ -237,6 +237,17 @@ pub fn validate_sheet(
                 }
             }
         }
+
+        // Selling for fiat, but not EUR.
+        // Log this as a warning, but don't fail the validation.
+        if !matches!(output_token, AssetType::EUR) && output_token.is_fiat() {
+            log::warn!(
+                "Sheet: {}; Selling for non-EUR fiat {:?} in transaction: {:?}. Take the EUR value instead at the transaction date.",
+                sheet_name,
+                output_token,
+                tx
+            );
+        }
     }
 
     Ok(state)
