@@ -208,6 +208,13 @@ impl Transaction {
     pub fn note(&self) -> &str {
         &self.note
     }
+
+    /// Cost basis of the transaction.
+    /// This is the price at which the output token was acquired.
+    /// E.g. if 1.5 BTC was bought for 750 USD, the cost basis is 500 USD.
+    pub fn cost_basis(&self) -> Decimal {
+        self.input_amount / self.output_amount
+    }
 }
 
 impl Display for Transaction {
@@ -223,87 +230,4 @@ impl Display for Transaction {
             self.tx_type
         )
     }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct FifoTransaction {
-    /// Underlying transaction data.
-    transaction: Transaction,
-    /// Vector of FIFO fragments that were created from this transaction.
-    fragments: Vec<TransactionFragment>,
-}
-
-impl FifoTransaction {
-    /// Create a new `FifoTransaction`.
-    pub fn new(transaction: Transaction) -> Self {
-        Self {
-            transaction,
-            fragments: Vec::new(),
-        }
-    }
-
-    /// Underlying transaction data.
-    pub fn transaction(&self) -> &Transaction {
-        &self.transaction
-    }
-
-    pub fn consume(&mut self, asset: AssetType, amount: Decimal) -> Result<(), String> {
-        // 1. Check the asset types & amounts.
-        if self.transaction.output_type != asset {
-            return Err(format!(
-                "Asset mismatch: expected {:?}, found {:?}",
-                self.transaction.output_type, asset
-            ));
-        }
-
-        let remaining_amount = self.remaining_amount();
-        if remaining_amount <= Decimal::ZERO {
-            return Err("Transaction fully consumed".to_string());
-        }
-
-        if remaining_amount < Decimal::from_str("0.001").unwrap() {
-            log::warn!(
-                "Transaction {} is almost fully consumed, having only {} left",
-                self.transaction,
-                remaining_amount
-            );
-        }
-
-        // Create a new fragment.
-
-        // let fragment = TransactionFragment {
-        //     input_amount: self.transaction.input_amount,
-        //     output_amount: amount,
-        //     is_consumed: false,
-        //     parent_tx_index: 0,
-        //     parent_fragment_index: 0,
-        //     child_tx_index: None,
-        //     child_fragment_index: None,
-        // };
-
-        Ok(())
-    }
-
-    fn remaining_amount(&self) -> Decimal {
-        let sum: Decimal = self.fragments.iter().map(|f| f.output_amount).sum();
-        self.transaction.output_amount - sum
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-struct TransactionFragment {
-    /// Amount of the transaction input fragment.
-    input_amount: Decimal,
-    /// Amount of the transaction output fragment.
-    output_amount: Decimal,
-    /// Flag indicating if this fragment was consumed by a swap.
-    is_consumed: bool,
-    /// Index of the parent transaction in the history.
-    parent_tx_index: usize,
-    /// Index of the fragment in the parent transaction.
-    parent_fragment_index: usize,
-    /// Index of the child transaction, if it exists.
-    child_tx_index: Option<usize>,
-    /// Index of the child fragment, if it exists.
-    child_fragment_index: Option<usize>,
 }

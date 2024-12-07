@@ -141,7 +141,7 @@ pub fn parse_row(row: &[Data]) -> Result<Transaction, String> {
 /// * `HashMap<AssetType, Decimal>` - If the transactions are valid, return the final state of the ledger.
 /// * `String` - If the transactions are invalid, return an error message.
 pub fn validate_sheet(
-    transaction: Vec<Transaction>,
+    transaction: &Vec<Transaction>,
     init_state: HashMap<AssetType, Decimal>,
     sheet_name: &str,
 ) -> Result<HashMap<AssetType, Decimal>, String> {
@@ -252,3 +252,5 @@ pub fn validate_sheet(
 
     Ok(state)
 }
+
+// TODO: add validation for each transaction type - e.g. if it's "Buying", then input amount must be greater than zero, etc.
