@@ -14,4 +14,17 @@ fn main() {
 
     println!("Final state: {:#?}", result);
     println!("====================");
+
+    let mut counter: u32 = 0;
+    let transactions = sheet_2023
+        .into_iter()
+        .chain(sheet_2024.into_iter())
+        .map(|tx| {
+            counter += 1;
+            tx.new_with_ordinal(counter)
+        })
+        .collect();
+
+    let mut ledger = fifo::Ledger::new();
+    ledger.process_transactions(transactions);
 }

@@ -184,6 +184,12 @@ impl Transaction {
         self.ordinal
     }
 
+    /// Consume this transaction and create a new one with a different ordinal number.
+    pub fn new_with_ordinal(mut self, ordinal: u32) -> Self {
+        self.ordinal = ordinal;
+        self
+    }
+
     /// Date on which the transaction was made.
     pub fn date(&self) -> NaiveDateTime {
         self.date
@@ -212,8 +218,23 @@ impl Transaction {
     /// Cost basis of the transaction.
     /// This is the price at which the output token was acquired.
     /// E.g. if 1.5 BTC was bought for 750 USD, the cost basis is 500 USD.
-    pub fn cost_basis(&self) -> Decimal {
-        self.input_amount / self.output_amount
+    pub fn cost_basis(&self) -> Option<Decimal> {
+        if self.output_amount == Decimal::ZERO {
+            None
+        } else {
+            Some(self.input_amount / self.output_amount)
+        }
+    }
+
+    /// Sale price of the transaction.
+    /// This is the price at which the output token was sold.
+    /// E.g. if 1.5 BTC was sold for 750 USD, the sale price is 500 USD.
+    pub fn sale_price(&self) -> Option<Decimal> {
+        if self.input_amount == Decimal::ZERO {
+            None
+        } else {
+            Some(self.output_amount / self.input_amount)
+        }
     }
 }
 

@@ -41,11 +41,18 @@ struct InventoryItem {
     /// Remaining amount for 'consumption'.
     remaining_amount: Decimal,
     /// Cost basis of the asset, i.e. the price at which it was acquired.
-    cost_basis: Decimal,
+    cost_basis: Option<Decimal>,
     /// Unit sale price of the asset, if it was sold.
     sale_price: Option<Decimal>,
     /// Parent transaction Id, if this item uses assets from another transaction.
     parent_tx: Option<usize>,
+}
+
+impl InventoryItem {
+    /// Cost basis of the asset.
+    fn cost_basis(&self) -> Option<Decimal> {
+        self.cost_basis
+    }
 }
 
 pub struct Ledger {
@@ -76,11 +83,12 @@ impl Ledger {
             TransactionType::Buying | TransactionType::Invoice => {
                 self.process_buying(transaction);
             }
-            TransactionType::Selling | TransactionType::Fees | TransactionType::Nft => {
-                self.process_selling(transaction);
-            }
-            TransactionType::Swap | TransactionType::Lock => {
-                self.process_swap(transaction);
+            TransactionType::Selling
+            | TransactionType::Fees
+            | TransactionType::Nft
+            | TransactionType::Swap
+            | TransactionType::Lock => {
+                self.process_selling_or_swap(transaction);
             }
             TransactionType::Interest | TransactionType::Airdrop => {
                 self.process_interest(transaction);
@@ -93,7 +101,6 @@ impl Ledger {
 
     /// Process a transaction which involves trading fiat for crypto.
     fn process_buying(&mut self, transaction: Transaction) {
-        let (input_token, input_amount) = transaction.input();
         let (output_token, output_amount) = transaction.output();
 
         // TODO: provide a dedicated function to handle inner ledger manipulation.
@@ -101,7 +108,7 @@ impl Ledger {
 
         let entry = self.ledger.entry(output_token).or_insert_with(Vec::new);
 
-        // Add the transaction to the ledger.
+        // Create a new inventory item for the transaction.
         let item = InventoryItem {
             ordinal: transaction.ordinal(),
             date: transaction.date(),
@@ -114,61 +121,121 @@ impl Ledger {
         entry.push(item);
     }
 
-    /// Process a transaction which involves selling crypto for fiat.
-    fn process_selling(&mut self, transaction: Transaction) {
+    /// Process a transaction which involves selling crypto for fiat or a swap.
+    fn process_selling_or_swap(&mut self, transaction: Transaction) {
         let (input_token, input_amount) = transaction.input();
-        let (output_token, output_amount) = transaction.output();
+        let (output_token, _) = transaction.output();
 
-        if let Some(inventory) = self.ledger.get_mut(&input_token) {
-            let mut remaining_amount = input_amount;
+        let inventory = self
+            .ledger
+            .get_mut(&input_token)
+            .expect("Must exist since data was validated.");
+        let mut remaining_amount = input_amount;
 
-            // TODO: need a more efficient way to start iteration. Use a dedicated function to provide an iterator.
-            for item in inventory.iter_mut() {
-                if remaining_amount.is_zero() {
-                    break;
-                }
+        let mut new_items = Vec::new();
 
-                let consumed_amount = if item.remaining_amount > remaining_amount {
-                    // Consume the entire amount.
-                    let consumed = remaining_amount;
-
-                    item.remaining_amount -= remaining_amount;
-                    remaining_amount = Decimal::ZERO;
-
-                    consumed
-                } else {
-                    // Consume the remaining amount.
-                    let consumed = item.remaining_amount;
-                    remaining_amount -= item.remaining_amount;
-                    item.remaining_amount = Decimal::ZERO;
-
-                    consumed
-                };
-
-                // Add the transaction to the ledger.
-                let item = InventoryItem {
-                    ordinal: transaction.ordinal(),
-                    date: transaction.date(),
-                    amount: output_amount,
-                    remaining_amount: output_amount,
-                    cost_basis: transaction.cost_basis(),
-                    sale_price: None,
-                    parent_tx: None,
-                };
-                // TODO: continue here, get rest of the required data, add it to the fiat ledger.
+        // TODO: need a more efficient way to start iteration. Use a dedicated function to provide an iterator.
+        // There should be an 'last known index' to start from, to avoid iterating from the beginning.
+        for item in inventory.iter_mut() {
+            if remaining_amount.is_zero() {
+                break;
             }
-        } else {
+
+            let consumed_amount = if item.remaining_amount > remaining_amount {
+                // Consume the entire amount.
+                let consumed = remaining_amount;
+                item.remaining_amount -= remaining_amount;
+                remaining_amount = Decimal::ZERO;
+
+                consumed
+            } else {
+                // Consume the remaining amount.
+                let consumed = item.remaining_amount;
+                remaining_amount -= item.remaining_amount;
+                item.remaining_amount = Decimal::ZERO;
+
+                consumed
+            };
+
+            // Add the transaction to the ledger.
+            let new_cost_basis = if let Some(cost_basis) = item.cost_basis() {
+                // If output is fiat, the cost basis remains the same.
+                if output_token.is_fiat() {
+                    Some(cost_basis)
+                } else {
+                    transaction.cost_basis().map(|cb| cb * cost_basis)
+                }
+            } else {
+                None
+            };
+
+            let new_item = InventoryItem {
+                ordinal: transaction.ordinal(),
+                date: transaction.date(),
+                amount: consumed_amount,
+                // irrelevant for selling transactions
+                remaining_amount: Decimal::ZERO,
+                // Chaining rule applies here.
+                cost_basis: new_cost_basis,
+                sale_price: transaction.sale_price(),
+                parent_tx: Some(transaction.ordinal() as usize),
+            };
+
+            new_items.push(new_item);
+        }
+
+        // TODO: check if anything remains?
+        if !remaining_amount.is_zero() {
             log::error!(
-                "Token {:?} not found in the inventory ledger. Transaction: {}",
+                "Remaining amount of {} for {:?} after processing transaction: {}",
+                remaining_amount,
                 input_token,
                 transaction
             );
         }
+
+        // Add the new items to the ledger.
+        self.ledger
+            .entry(output_token)
+            .or_insert_with(Vec::new)
+            .extend(new_items);
     }
 
-    fn process_swap(&mut self, transaction: Transaction) {}
+    /// Process a transaction which involves receiving interest or an airdrop.
+    /// This is a zero cost basis transaction.
+    fn process_interest(&mut self, transaction: Transaction) {
+        let (output_token, output_amount) = transaction.output();
 
-    fn process_interest(&mut self, transaction: Transaction) {}
+        self.ledger
+            .entry(output_token)
+            .or_insert_with(Vec::new)
+            .push(InventoryItem {
+                ordinal: transaction.ordinal(),
+                date: transaction.date(),
+                amount: output_amount,
+                remaining_amount: output_amount,
+                cost_basis: None,
+                sale_price: None,
+                parent_tx: None,
+            });
+    }
 
-    fn process_transfer(&mut self, transaction: Transaction) {}
+    // TODO: rethink how this is handled, this seems hacky.
+    fn process_transfer(&mut self, transaction: Transaction) {
+        let (input_type, input_amount) = transaction.input();
+        let (_, output_amount) = transaction.output();
+
+        let dummy_tx = Transaction::new(
+            transaction.ordinal(),
+            transaction.date(),
+            transaction.tx_type(),
+            input_type,
+            input_amount - output_amount,
+            AssetType::EUR,
+            Decimal::ZERO,
+            transaction.note().to_string(),
+        );
+
+        self.process_selling_or_swap(dummy_tx);
+    }
 }
