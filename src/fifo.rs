@@ -31,6 +31,7 @@ use rust_decimal::Decimal;
 use std::collections::HashMap;
 
 /// Inventory item for the FIFO asset management system.
+#[derive(Debug, Clone, Eq, PartialEq)]
 struct InventoryItem {
     /// Ordinal number of the transaction in the ledger.
     ordinal: u32,
@@ -55,6 +56,7 @@ impl InventoryItem {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Ledger {
     /// Ledger of assets, used to keep track of the FIFO inventory.
     ledger: HashMap<AssetType, Vec<InventoryItem>>,
@@ -173,8 +175,7 @@ impl Ledger {
                 ordinal: transaction.ordinal(),
                 date: transaction.date(),
                 amount: consumed_amount,
-                // irrelevant for selling transactions
-                remaining_amount: Decimal::ZERO,
+                remaining_amount: consumed_amount,
                 // Chaining rule applies here.
                 cost_basis: new_cost_basis,
                 sale_price: transaction.sale_price(),
@@ -192,6 +193,11 @@ impl Ledger {
                 input_token,
                 transaction
             );
+
+            for (key, value) in self.ledger.iter() {
+                let amount = value.iter().map(|item| item.remaining_amount).sum::<Decimal>();
+                log::error!("{:?}: {}", key, amount);
+            }
         }
 
         // Add the new items to the ledger.
