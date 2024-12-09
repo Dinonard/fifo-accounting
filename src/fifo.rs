@@ -126,7 +126,7 @@ impl Ledger {
     /// Process a transaction which involves selling crypto for fiat or a swap.
     fn process_selling_or_swap(&mut self, transaction: Transaction) {
         let (input_token, input_amount) = transaction.input();
-        let (output_token, _) = transaction.output();
+        let (output_token, output_amount) = transaction.output();
 
         let inventory = self
             .ledger
@@ -171,11 +171,16 @@ impl Ledger {
                 None
             };
 
+            // TODO: Revisit this part later.
+            // Ideally we should keep track of the consumed output amount, and when input reaches zero,
+            // we should consume the entire remainder of the output amount.
+            let new_amount = output_amount * consumed_amount / input_amount;
+
             let new_item = InventoryItem {
                 ordinal: transaction.ordinal(),
                 date: transaction.date(),
-                amount: consumed_amount,
-                remaining_amount: consumed_amount,
+                amount: new_amount,
+                remaining_amount: new_amount,
                 // Chaining rule applies here.
                 cost_basis: new_cost_basis,
                 sale_price: transaction.sale_price(),
