@@ -286,19 +286,23 @@ impl Ledger {
     // TODO: rethink how this is handled, this seems hacky.
     fn process_transfer(&mut self, transaction: Transaction) {
         let (input_type, input_amount) = transaction.input();
-        let (_, output_amount) = transaction.output();
+        let (output_type, output_amount) = transaction.output();
 
-        let dummy_tx = Transaction::new(
-            transaction.ordinal(),
-            transaction.date(),
-            transaction.tx_type(),
-            input_type,
-            input_amount - output_amount,
-            AssetType::EUR,
-            Decimal::ZERO,
-            transaction.note().to_string(),
-        );
+        if input_type == output_type {
+            let dummy_tx = Transaction::new(
+                transaction.ordinal(),
+                transaction.date(),
+                transaction.tx_type(),
+                input_type,
+                input_amount - output_amount,
+                AssetType::EUR,
+                Decimal::ZERO,
+                transaction.note().to_string(),
+            );
 
-        self.process_selling_or_swap(dummy_tx);
+            self.process_selling_or_swap(dummy_tx);
+        } else {
+            self.process_selling_or_swap(transaction);
+        }
     }
 }

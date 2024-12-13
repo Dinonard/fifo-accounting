@@ -30,4 +30,6 @@ fn main() {
 
     println!("State after processing:");
     println!("{}", ledger.remaining_amount_report());
+
+    println!("{:#?}", ledger);
 }
