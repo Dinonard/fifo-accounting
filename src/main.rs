@@ -16,7 +16,7 @@ fn main() {
     println!("====================");
 
     let mut counter: u32 = 0;
-    let transactions = sheet_2023
+    let transactions: Vec<_> = sheet_2023
         .into_iter()
         .chain(sheet_2024.into_iter())
         .map(|tx| {
@@ -26,10 +26,20 @@ fn main() {
         .collect();
 
     let mut ledger = fifo::Ledger::new();
-    ledger.process_transactions(transactions);
+    ledger.process_transactions(&transactions);
 
-    println!("State after processing:");
-    println!("{}", ledger.remaining_amount_report());
+    ledger.in_order()
+        .iter()
+        .for_each(|tx| {
+            println!("{}", tx.report());
+        });
 
-    println!("{:#?}", ledger);
+    // println!("State after processing:");
+    // println!("{}", ledger.remaining_amount_report());
+
+    // ledger.ledger()[&crate::types::AssetType::EUR]
+    //     .iter()
+    //     .for_each(|tx| {
+    //         println!("{:?}", tx);
+    //     });
 }

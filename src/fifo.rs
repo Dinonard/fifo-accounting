@@ -37,8 +37,10 @@ pub struct InventoryItem {
     ordinal: u32,
     /// Date on which the transaction was made.
     date: NaiveDateTime,
-    /// Output amount of the transaction.
-    amount: Decimal,
+    /// Input amount consumed from the transaction.
+    input_amount: Decimal,
+    /// Output amount consumed from the transaction.
+    output_amount: Decimal,
     /// Remaining amount for 'consumption'.
     remaining_amount: Decimal,
     /// Cost basis of the asset, i.e. the price at which it was acquired.
@@ -61,12 +63,30 @@ impl InventoryItem {
     pub fn net_amount(&self) -> Option<Decimal> {
         match (self.cost_basis, self.sale_price) {
             // 1st scenario - asset was acquired for some price, and sold afterwards.
-            (Some(cost_basis), Some(sale_price)) => Some(self.amount * (sale_price - cost_basis)),
+            (Some(cost_basis), Some(sale_price)) => {
+                Some(self.input_amount * (sale_price - cost_basis))
+            }
             // 2nd scenario - asset was acquired as part of some airdrop or interest.
-            (None, Some(sale_price)) => Some(self.amount * sale_price),
+            (None, Some(sale_price)) => Some(self.input_amount * sale_price),
             // 3rd scenario - asset was acquired, but not sold yet.
             _ => None,
         }
+    }
+
+    pub fn report(&self) -> String {
+        let date_str = self.date.format("%d/%m/%Y").to_string();
+        let input_amount_str = format!("{:.4}", self.input_amount);
+        let output_amount_str = format!("{:.4}", self.output_amount);
+        let remaining_amount_str = format!("{:.4}", self.remaining_amount);
+        let net_amount_str = self.net_amount().map_or_else(
+            || String::from("N/A"),
+            |net_amount| format!("{:.4}", net_amount),
+        );
+
+        format!(
+            "Ordinal: {}, Date: {}, Input Amount: {}, Output Amount: {}, Remaining Amount: {}, Net Amount: {} EUR",
+            self.ordinal, date_str, input_amount_str, output_amount_str, remaining_amount_str, net_amount_str
+        )
     }
 }
 
@@ -101,10 +121,7 @@ impl Ledger {
             report.insert(asset.clone(), total_remaining);
         }
 
-        report
-            .iter()
-            .map(|(asset, amount)| format!("{:?}: {}\n", asset, amount))
-            .collect()
+        format!("{:#?}", report)
     }
 
     /// Vector of `InventoryItem` references, sorted in order their respective transactions appear.
@@ -122,14 +139,14 @@ impl Ledger {
     /// Process a list of transactions.
     ///
     /// Caller must ensure they are sorted, and are generally correct.
-    pub fn process_transactions(&mut self, transactions: Vec<Transaction>) {
+    pub fn process_transactions(&mut self, transactions: &Vec<Transaction>) {
         for transaction in transactions {
             self.add_transaction(transaction);
         }
     }
 
     /// Add a new transaction to the ledger.
-    fn add_transaction(&mut self, transaction: Transaction) {
+    fn add_transaction(&mut self, transaction: &Transaction) {
         match transaction.tx_type() {
             TransactionType::Buying | TransactionType::Invoice => {
                 self.process_buying(transaction);
@@ -151,7 +168,7 @@ impl Ledger {
     }
 
     /// Process a transaction which involves trading fiat for crypto.
-    fn process_buying(&mut self, transaction: Transaction) {
+    fn process_buying(&mut self, transaction: &Transaction) {
         let (output_token, output_amount) = transaction.output();
 
         // TODO: provide a dedicated function to handle inner ledger manipulation.
@@ -163,7 +180,9 @@ impl Ledger {
         let item = InventoryItem {
             ordinal: transaction.ordinal(),
             date: transaction.date(),
-            amount: output_amount,
+            // Not important for fiat
+            input_amount: Decimal::ZERO,
+            output_amount: output_amount,
             remaining_amount: output_amount,
             cost_basis: transaction.cost_basis(),
             sale_price: None,
@@ -173,7 +192,7 @@ impl Ledger {
     }
 
     /// Process a transaction which involves selling crypto for fiat or a swap.
-    fn process_selling_or_swap(&mut self, transaction: Transaction) {
+    fn process_selling_or_swap(&mut self, transaction: &Transaction) {
         let (input_token, input_amount) = transaction.input();
         let (output_token, output_amount) = transaction.output();
 
@@ -237,7 +256,8 @@ impl Ledger {
             let new_item = InventoryItem {
                 ordinal: transaction.ordinal(),
                 date: transaction.date(),
-                amount: new_amount,
+                input_amount: consumed_amount,
+                output_amount: new_amount,
                 remaining_amount: new_amount,
                 // Chaining rule applies here.
                 cost_basis: new_cost_basis,
@@ -266,7 +286,7 @@ impl Ledger {
 
     /// Process a transaction which involves receiving interest or an airdrop.
     /// This is a zero cost basis transaction.
-    fn process_interest(&mut self, transaction: Transaction) {
+    fn process_interest(&mut self, transaction: &Transaction) {
         let (output_token, output_amount) = transaction.output();
 
         self.ledger
@@ -275,7 +295,8 @@ impl Ledger {
             .push(InventoryItem {
                 ordinal: transaction.ordinal(),
                 date: transaction.date(),
-                amount: output_amount,
+                input_amount: Decimal::ZERO,
+                output_amount: output_amount,
                 remaining_amount: output_amount,
                 cost_basis: None,
                 sale_price: None,
@@ -284,7 +305,7 @@ impl Ledger {
     }
 
     // TODO: rethink how this is handled, this seems hacky.
-    fn process_transfer(&mut self, transaction: Transaction) {
+    fn process_transfer(&mut self, transaction: &Transaction) {
         let (input_type, input_amount) = transaction.input();
         let (output_type, output_amount) = transaction.output();
 
@@ -300,7 +321,7 @@ impl Ledger {
                 transaction.note().to_string(),
             );
 
-            self.process_selling_or_swap(dummy_tx);
+            self.process_selling_or_swap(&dummy_tx);
         } else {
             self.process_selling_or_swap(transaction);
         }
