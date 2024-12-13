@@ -27,4 +27,7 @@ fn main() {
 
     let mut ledger = fifo::Ledger::new();
     ledger.process_transactions(transactions);
+
+    println!("State after processing:");
+    println!("{}", ledger.remaining_amount_report());
 }

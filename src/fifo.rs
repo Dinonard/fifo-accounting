@@ -32,7 +32,7 @@ use std::collections::HashMap;
 
 /// Inventory item for the FIFO asset management system.
 #[derive(Debug, Clone, Eq, PartialEq)]
-struct InventoryItem {
+pub struct InventoryItem {
     /// Ordinal number of the transaction in the ledger.
     ordinal: u32,
     /// Date on which the transaction was made.
@@ -54,6 +54,20 @@ impl InventoryItem {
     fn cost_basis(&self) -> Option<Decimal> {
         self.cost_basis
     }
+
+    /// Net amount from the sale of the asset.
+    /// Can be either profit or loss.
+    /// If the asset was not sold yet, return `None`.
+    pub fn net_amount(&self) -> Option<Decimal> {
+        match (self.cost_basis, self.sale_price) {
+            // 1st scenario - asset was acquired for some price, and sold afterwards.
+            (Some(cost_basis), Some(sale_price)) => Some(self.amount * (sale_price - cost_basis)),
+            // 2nd scenario - asset was acquired as part of some airdrop or interest.
+            (None, Some(sale_price)) => Some(self.amount * sale_price),
+            // 3rd scenario - asset was acquired, but not sold yet.
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -68,6 +82,41 @@ impl Ledger {
         Ledger {
             ledger: HashMap::new(),
         }
+    }
+
+    /// Ledger of assets & transactions.
+    pub fn ledger(&self) -> &HashMap<AssetType, Vec<InventoryItem>> {
+        &self.ledger
+    }
+
+    // TODO: temp, remove later?
+    pub fn remaining_amount_report(&self) -> String {
+        let mut report = HashMap::<AssetType, Decimal>::new();
+        for (asset, items) in &self.ledger {
+            if asset.is_fiat() {
+                continue;
+            }
+
+            let total_remaining: Decimal = items.iter().map(|item| item.remaining_amount).sum();
+            report.insert(asset.clone(), total_remaining);
+        }
+
+        report
+            .iter()
+            .map(|(asset, amount)| format!("{:?}: {}\n", asset, amount))
+            .collect()
+    }
+
+    /// Vector of `InventoryItem` references, sorted in order their respective transactions appear.
+    pub fn in_order(&self) -> Vec<&InventoryItem> {
+        let mut items: Vec<_> = self
+            .ledger
+            .values()
+            .flat_map(|asset_items| asset_items.iter())
+            .collect();
+
+        items.sort_by_key(|item| item.ordinal);
+        items
     }
 
     /// Process a list of transactions.
@@ -132,34 +181,48 @@ impl Ledger {
             .ledger
             .get_mut(&input_token)
             .expect("Must exist since data was validated.");
-        let mut remaining_amount = input_amount;
+        let mut remaining_input_amount = input_amount;
+        let mut remaining_output_amount = output_amount;
 
         let mut new_items = Vec::new();
 
         // TODO: need a more efficient way to start iteration. Use a dedicated function to provide an iterator.
         // There should be an 'last known index' to start from, to avoid iterating from the beginning.
-        for item in inventory.iter_mut() {
-            if remaining_amount.is_zero() {
+        for item in inventory
+            .iter_mut()
+            .filter(|item| item.remaining_amount > Decimal::ZERO)
+        {
+            if remaining_input_amount.is_zero() {
                 break;
             }
 
-            let consumed_amount = if item.remaining_amount > remaining_amount {
+            let consumed_amount = if item.remaining_amount > remaining_input_amount {
                 // Consume the entire amount.
-                let consumed = remaining_amount;
-                item.remaining_amount -= remaining_amount;
-                remaining_amount = Decimal::ZERO;
+                let consumed = remaining_input_amount;
+                item.remaining_amount -= consumed;
+                remaining_input_amount = Decimal::ZERO;
 
                 consumed
             } else {
                 // Consume the remaining amount.
                 let consumed = item.remaining_amount;
-                remaining_amount -= item.remaining_amount;
+                remaining_input_amount -= item.remaining_amount;
                 item.remaining_amount = Decimal::ZERO;
 
                 consumed
             };
 
-            // Add the transaction to the ledger.
+            // Once remaining input amount reaches zero, consume the entire remaining output amount.
+            let new_amount = if remaining_input_amount.is_zero() {
+                remaining_output_amount
+            } else {
+                let new_amount = output_amount * consumed_amount / input_amount;
+                remaining_output_amount -= new_amount;
+
+                new_amount
+            };
+
+            // TODO: docs
             let new_cost_basis = if let Some(cost_basis) = item.cost_basis() {
                 // If output is fiat, the cost basis remains the same.
                 if output_token.is_fiat() {
@@ -170,11 +233,6 @@ impl Ledger {
             } else {
                 None
             };
-
-            // TODO: Revisit this part later.
-            // Ideally we should keep track of the consumed output amount, and when input reaches zero,
-            // we should consume the entire remainder of the output amount.
-            let new_amount = output_amount * consumed_amount / input_amount;
 
             let new_item = InventoryItem {
                 ordinal: transaction.ordinal(),
@@ -190,19 +248,13 @@ impl Ledger {
             new_items.push(new_item);
         }
 
-        // TODO: check if anything remains?
-        if !remaining_amount.is_zero() {
+        if !remaining_input_amount.is_zero() {
             log::error!(
                 "Remaining amount of {} for {:?} after processing transaction: {}",
-                remaining_amount,
+                remaining_input_amount,
                 input_token,
                 transaction
             );
-
-            for (key, value) in self.ledger.iter() {
-                let amount = value.iter().map(|item| item.remaining_amount).sum::<Decimal>();
-                log::error!("{:?}: {}", key, amount);
-            }
         }
 
         // Add the new items to the ledger.

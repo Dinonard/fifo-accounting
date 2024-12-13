@@ -230,7 +230,7 @@ impl Transaction {
     /// This is the price at which the output token was sold.
     /// E.g. if 1.5 BTC was sold for 750 USD, the sale price is 500 USD.
     pub fn sale_price(&self) -> Option<Decimal> {
-        if self.input_amount == Decimal::ZERO {
+        if self.input_amount == Decimal::ZERO || !self.output_type.is_fiat() {
             None
         } else {
             Some(self.output_amount / self.input_amount)
@@ -240,10 +240,12 @@ impl Transaction {
 
 impl Display for Transaction {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let date_str = self.date.format("%d.%m.%Y").to_string();
         write!(
             f,
-            "Transaction {}.: {} {:?} -> {} {:?} ({})",
+            "Transaction {}., {}: {} {:?} -> {} {:?} ({})",
             self.ordinal,
+            date_str,
             self.input_amount,
             self.input_type,
             self.output_amount,
