@@ -1,0 +1,20 @@
+# Entries in the config file are used to specify the input files and sheets to be processed.
+# They should be specified in the order of processing since transactions from multiple files will be concatenated.
+#
+# Entry fields:
+# path: Path to the input file.
+# sheet: Name of the sheet in the input file.
+# start_row: Row number in the sheet where the transactions start. Uses `Excell-like` indexing (1-based).
+
+output_path = "output.csv"
+csv_delimiter = ";"
+
+[[entries]]
+path = "balances.xlsx"
+sheet = "2023"
+start_row = 1
+
+[[entries]]
+path = "balances.xlsx"
+sheet = "2024"
+start_row = 14
