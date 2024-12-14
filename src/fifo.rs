@@ -25,7 +25,7 @@
 //!
 //! The input amount of the original transaction & the output amount of the swap are fragmented in the same way.
 
-use crate::types::{AssetType, Transaction, TransactionType};
+use crate::types::{AssetType, OutputLine, Transaction, TransactionType};
 use chrono::NaiveDateTime;
 use rust_decimal::Decimal;
 use std::collections::HashMap;
@@ -73,35 +73,61 @@ impl InventoryItem {
         }
     }
 
-    pub fn report(&self) -> String {
-        let date_str = self.date.format("%d/%m/%Y").to_string();
-        let input_amount_str = format!("{:.4}", self.input_amount);
-        let output_amount_str = format!("{:.4}", self.output_amount);
-        let remaining_amount_str = format!("{:.4}", self.remaining_amount);
-        let net_amount_str = self.net_amount().map_or_else(
-            || String::from("N/A"),
-            |net_amount| format!("{:.4}", net_amount),
-        );
+    /// Create an `OutputLine` from the inventory item.
+    ///
+    /// Vector of transactions used in processing must be provided. The order of transactions must be preserved.
+    pub fn output_line(&self, transactions: &Vec<Transaction>) -> OutputLine {
+        let tx = transactions
+            .get(self.ordinal as usize - 1)
+            .expect("Must exist since data was validated.");
 
-        format!(
-            "Ordinal: {}, Date: {}, Input Amount: {}, Output Amount: {}, Remaining Amount: {}, Net Amount: {} EUR",
-            self.ordinal, date_str, input_amount_str, output_amount_str, remaining_amount_str, net_amount_str
-        )
+        let ordinal = format!("{}", self.ordinal);
+        let date = self.date.format("%d.%m.%Y").to_string();
+        let action = format!("{:?}", tx.tx_type());
+
+        let input_type = format!("{:?}", tx.input().0);
+        let input_amount = format!("{}", self.input_amount);
+
+        let output_type = format!("{:?}", tx.output().0);
+        let output_amount = format!("{}", self.output_amount);
+
+        let net_amount = self
+            .net_amount()
+            .map_or_else(|| String::from(""), |net_amount| format!("{}", net_amount));
+
+        OutputLine {
+            ordinal,
+            date,
+            action,
+            input_type,
+            input_amount,
+            output_type,
+            output_amount,
+            net_amount,
+        }
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Ledger {
+    /// List of all transactions, in order.
+    transactions: Vec<Transaction>,
     /// Ledger of assets, used to keep track of the FIFO inventory.
     ledger: HashMap<AssetType, Vec<InventoryItem>>,
 }
 
 impl Ledger {
     /// Create a new `Ledger` instance.
-    pub fn new() -> Self {
-        Ledger {
+    pub fn new(transactions: Vec<Transaction>) -> Self {
+        let mut ledger = Ledger {
+            transactions: Vec::new(), // ugly, maybe improve later
             ledger: HashMap::new(),
-        }
+        };
+
+        ledger.process(&transactions);
+        ledger.transactions = transactions;
+
+        ledger
     }
 
     /// Ledger of assets & transactions.
@@ -109,17 +135,25 @@ impl Ledger {
         &self.ledger
     }
 
-    // TODO: temp, remove later?
-    pub fn remaining_amount_report(&self) -> String {
-        let mut report = HashMap::<AssetType, Decimal>::new();
-        for (asset, items) in &self.ledger {
-            if asset.is_fiat() {
-                continue;
-            }
+    /// Vector of output lines, sorted in order their respective transactions appear.
+    pub fn output_lines(&self) -> Vec<OutputLine> {
+        self.in_order()
+            .iter()
+            .map(|item| item.output_line(&self.transactions))
+            .collect()
+    }
 
-            let total_remaining: Decimal = items.iter().map(|item| item.remaining_amount).sum();
-            report.insert(asset.clone(), total_remaining);
-        }
+    /// Report the remaining amount of each asset in the ledger.
+    pub fn remaining_amount_report(&self) -> String {
+        let report: HashMap<AssetType, Decimal> = self
+            .ledger
+            .iter()
+            .filter(|(asset, _)| !asset.is_fiat())
+            .map(|(asset, items)| {
+                let total_remaining: Decimal = items.iter().map(|item| item.remaining_amount).sum();
+                (asset.clone(), total_remaining)
+            })
+            .collect();
 
         format!("{:#?}", report)
     }
@@ -139,7 +173,7 @@ impl Ledger {
     /// Process a list of transactions.
     ///
     /// Caller must ensure they are sorted, and are generally correct.
-    pub fn process_transactions(&mut self, transactions: &Vec<Transaction>) {
+    fn process(&mut self, transactions: &Vec<Transaction>) {
         for transaction in transactions {
             self.add_transaction(transaction);
         }

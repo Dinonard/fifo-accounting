@@ -3,6 +3,8 @@ mod parser;
 mod types;
 mod validation;
 
+use types::OutputLine;
+
 fn main() {
     env_logger::init();
 
@@ -25,14 +27,30 @@ fn main() {
         })
         .collect();
 
-    let mut ledger = fifo::Ledger::new();
-    ledger.process_transactions(&transactions);
+    let mut ledger = fifo::Ledger::new(transactions);
 
-    ledger.in_order()
-        .iter()
-        .for_each(|tx| {
-            println!("{}", tx.report());
-        });
+    let lines = ledger
+        .output_lines()
+        .into_iter()
+        .map(|line| line.to_csv_line(";".to_string()))
+        .collect::<Vec<_>>();
+
+    // Write the output to a file.
+    std::fs::write(
+        "output.csv",
+        format!(
+            "{}\n{}",
+            OutputLine::csv_header(";".to_string()),
+            lines.join("\n")
+        ),
+    )
+    .unwrap();
+
+    // ledger.in_order()
+    //     .iter()
+    //     .for_each(|tx| {
+    //         println!("{}", tx.report());
+    //     });
 
     // println!("State after processing:");
     // println!("{}", ledger.remaining_amount_report());
