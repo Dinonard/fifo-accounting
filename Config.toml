@@ -6,7 +6,6 @@
 # sheet: Name of the sheet in the input file.
 # start_row: Row number in the sheet where the transactions start. Uses `Excell-like` indexing (1-based).
 
-output_path = "output.csv"
 csv_delimiter = ";"
 
 [[entries]]

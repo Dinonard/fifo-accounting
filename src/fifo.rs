@@ -26,9 +26,13 @@
 //! The input amount of the original transaction & the output amount of the swap are fragmented in the same way.
 
 use crate::types::{AssetType, OutputLine, Transaction, TransactionType};
-use chrono::NaiveDateTime;
+use chrono::{Datelike, NaiveDateTime};
+use itertools::Itertools;
 use rust_decimal::Decimal;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fmt::{self, Display, Formatter},
+};
 
 /// Inventory item for the FIFO asset management system.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -37,8 +41,15 @@ pub struct InventoryItem {
     ordinal: u32,
     /// Date on which the transaction was made.
     date: NaiveDateTime,
+    /// Date on which the acquisition of the origin asset was made.
+    /// E.g. the date when origin asset was acquired via an invoice.
+    acquisition_date: NaiveDateTime,
+    /// Type of the input asset.
+    input_type: AssetType,
     /// Input amount consumed from the transaction.
     input_amount: Decimal,
+    /// Type of the output asset.
+    output_type: AssetType,
     /// Output amount consumed from the transaction.
     output_amount: Decimal,
     /// Remaining amount for 'consumption'.
@@ -52,8 +63,27 @@ pub struct InventoryItem {
 }
 
 impl InventoryItem {
+    /// Check whether the inventory items is part of a 'sequence' of transactions
+    /// which originated with a zero-cost basis transaction like an airdrop or interest.
+    pub fn is_zero_cost(&self) -> bool {
+        self.cost_basis.is_none()
+    }
+
+    /// `true` if the asset was sold, `false` otherwise.
+    pub fn is_sell(&self) -> bool {
+        self.sale_price.is_some()
+    }
+
+    /// `true` if the item is the first in the sequence, `false` otherwise.
+    ///
+    /// First item in the sequence is the one that resulted in first acquisition of the asset.
+    /// E.g. this can be an invoice, interest or airdrop.
+    pub fn is_first_in_sequence(&self) -> bool {
+        self.parent_tx.is_none()
+    }
+
     /// Cost basis of the asset.
-    fn cost_basis(&self) -> Option<Decimal> {
+    pub fn cost_basis(&self) -> Option<Decimal> {
         self.cost_basis
     }
 
@@ -108,6 +138,60 @@ impl InventoryItem {
     }
 }
 
+// For easier readability
+type Year = i32;
+
+/// Yearly income & loss report, with remaining zero-cost assets per year.
+struct YearlyReport {
+    /// Year for which the report is generated.
+    year: Year,
+    /// Total income from selling any assets.
+    income: Decimal,
+    /// Total loss from selling any assets.
+    loss: Decimal,
+    /// Remaining zero-cost assets per year.
+    /// If assets were sold, they won't be included here.
+    remaining_zero_cost: HashMap<AssetType, Decimal>,
+}
+
+impl YearlyReport {
+    /// Include net result amount in the report.
+    /// Covers both income and loss.
+    fn include_net_result(&mut self, amount: Decimal) {
+        if amount.is_sign_positive() {
+            self.income = self
+                .income
+                .checked_add(amount)
+                .expect("Unexpected overflow.");
+        } else {
+            self.loss = self
+                .loss
+                .checked_add(amount)
+                .expect("Unexpected underflow.");
+        }
+    }
+
+    /// Include zero-cost asset in the report.
+    /// Covers both asset acquisition and disposal.
+    fn include_zero_cost(&mut self, asset_type: AssetType, amount: Decimal) {
+        let entry = self
+            .remaining_zero_cost
+            .entry(asset_type)
+            .or_insert_with(|| Decimal::ZERO);
+        *entry += amount;
+    }
+}
+
+impl Display for YearlyReport {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Year: {}\nTotal Income: {:.2}\nTotal Loss: {:.2}\nRemaining zero-cost assets: {:#?}",
+            self.year, self.income, self.loss, self.remaining_zero_cost
+        )
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Ledger {
     /// List of all transactions, in order.
@@ -143,21 +227,6 @@ impl Ledger {
             .collect()
     }
 
-    /// Report the remaining amount of each asset in the ledger.
-    pub fn remaining_amount_report(&self) -> String {
-        let report: HashMap<AssetType, Decimal> = self
-            .ledger
-            .iter()
-            .filter(|(asset, _)| !asset.is_fiat())
-            .map(|(asset, items)| {
-                let total_remaining: Decimal = items.iter().map(|item| item.remaining_amount).sum();
-                (asset.clone(), total_remaining)
-            })
-            .collect();
-
-        format!("{:#?}", report)
-    }
-
     /// Vector of `InventoryItem` references, sorted in order their respective transactions appear.
     pub fn in_order(&self) -> Vec<&InventoryItem> {
         let mut items: Vec<_> = self
@@ -168,6 +237,65 @@ impl Ledger {
 
         items.sort_by_key(|item| item.ordinal);
         items
+    }
+
+    // TODO
+    pub fn yearly_income_loss_report(&self) -> String {
+        let mut total_report = HashMap::<Year, YearlyReport>::new();
+
+        for item in self.in_order() {
+            let year = item.date.year();
+            let mut report = total_report.entry(year).or_insert_with(|| YearlyReport {
+                year,
+                income: Decimal::ZERO,
+                loss: Decimal::ZERO,
+                remaining_zero_cost: HashMap::new(),
+            });
+
+            // In case item represents a _selling_ action, include the net amount.
+            if let Some(net_amount) = item.net_amount() {
+                report.include_net_result(net_amount);
+            }
+
+            // TODO: This is the wrong approach and won't work.
+            // Some things are missing & need to be accounted for.
+            //
+            // Scenario |
+            // ---------|
+            // 1) 100 ASTR is received as interest in 2023.
+            // 2) 60 ASTR is sold in 2023, and that's treated as pure income.
+            // 3) Remaining 40 ASTR is treated as _income_ at the end of 2023, based on the end-of-year price.
+            // 4) Remaining 40 ASTR is sold in 2024, and that's treated as income or loss, compared to what was
+            //    recorded at the end of 2023.
+            //    E.g. if it was valued 0.05$ at the EoY, and now it's sold for 0.06$, the _profit_ is 0.01$.
+            //
+            // What does this mean?
+            // - We need to keep track of the _end-of-year_ prices for all assets to correctly calculate gain or loss.
+            // - When swapping or selling asset, we need to check historically whether the input asset was acquired in previous year.
+
+            // In case item represents zero-cost asset acquisition, track it.
+            if item.is_zero_cost() && item.is_first_in_sequence() {
+                report.include_zero_cost(item.output_type, item.output_amount);
+            } else if item.is_zero_cost() && !item.is_sell() {
+                report.include_zero_cost(item.output_type, item.output_amount);
+                report.include_zero_cost(item.input_type, -item.input_amount);
+            } else if item.is_zero_cost() && item.is_sell() {
+                report.include_zero_cost(item.input_type, -item.input_amount);
+            }
+        }
+
+        total_report
+            .into_iter()
+            .sorted_by_key(|(year, _)| *year)
+            .map(|(year, report)| format!("{}\n------{}", year, report))
+            .intersperse("\n".to_string())
+            .collect()
+    }
+
+    fn get_tx(&self, item: &InventoryItem) -> &Transaction {
+        self.transactions
+            .get(item.ordinal as usize - 1)
+            .expect("Must exist since data was validated.")
     }
 
     /// Process a list of transactions.
@@ -214,8 +342,11 @@ impl Ledger {
         let item = InventoryItem {
             ordinal: transaction.ordinal(),
             date: transaction.date(),
+            acquisition_date: transaction.date(),
             // Not important for fiat
+            input_type: AssetType::EUR,
             input_amount: Decimal::ZERO,
+            output_type: output_token,
             output_amount: output_amount,
             remaining_amount: output_amount,
             cost_basis: transaction.cost_basis(),
@@ -290,7 +421,10 @@ impl Ledger {
             let new_item = InventoryItem {
                 ordinal: transaction.ordinal(),
                 date: transaction.date(),
+                acquisition_date: item.date,
+                input_type: input_token,
                 input_amount: consumed_amount,
+                output_type: output_token,
                 output_amount: new_amount,
                 remaining_amount: new_amount,
                 // Chaining rule applies here.
@@ -329,7 +463,10 @@ impl Ledger {
             .push(InventoryItem {
                 ordinal: transaction.ordinal(),
                 date: transaction.date(),
+                acquisition_date: transaction.date(),
+                input_type: AssetType::EUR,
                 input_amount: Decimal::ZERO,
+                output_type: output_token,
                 output_amount: output_amount,
                 remaining_amount: output_amount,
                 cost_basis: None,

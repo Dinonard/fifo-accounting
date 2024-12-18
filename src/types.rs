@@ -54,6 +54,13 @@ impl FromStr for TransactionType {
     }
 }
 
+impl TransactionType {
+    /// Check if the transaction is 'zero-cost', meaning that some asset was acquired for **zero** fiat amount.
+    pub fn is_zero_cost(&self) -> bool {
+        matches!(self, Self::Interest | Self::Airdrop | Self::Fees)
+    }
+}
+
 impl Display for TransactionType {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
