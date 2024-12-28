@@ -6,7 +6,7 @@ mod validation;
 
 use clap::Parser;
 use fifo::InventoryItem;
-use price_provider::BasicPriceProvider;
+use price_provider::{BasicPriceProvider, PriceProvider};
 use types::OutputLine;
 
 use serde::Deserialize;
@@ -25,8 +25,6 @@ struct CmdArgs {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
-
-    // let bpp = BasicPriceProvider::new("Prices.toml")?;
 
     // 0. Parse the config file
     let cmd_args = CmdArgs::parse();
@@ -54,12 +52,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
 
-    // 3. Create the ledger & process the transactions in FIFO manner.
-    let mut ledger = fifo::Ledger::new(transactions);
+    // 3. Read the prices from the file.
+    let price_provider = BasicPriceProvider::new(&config.price_file)?;
+    let missing_prices = transactions
+        .iter()
+        .filter_map(|tx| {
+            if tx.is_zero_cost() && !price_provider.contains_price(tx.output().0, tx.date()) {
+                Some(format!(
+                    "Price provider missing data for asset '{:?}' on date '{};",
+                    tx.output().0,
+                    tx.date()
+                ))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
 
+    if !missing_prices.is_empty() {
+        log::error!(
+            "Missing prices for the following transactions: {:#?}",
+            missing_prices
+        );
+        return Err("Missing prices for some transactions".into());
+    }
+
+    // 4. Create the ledger & process the transactions in FIFO manner.
+    let mut ledger = fifo::Ledger::new(transactions);
     println!("{}", ledger.yearly_income_loss_report());
 
-    // 4. Generate the output CSV file.
+    // 5. Generate the output CSV file.
     let lines = ledger
         .output_lines()
         .into_iter()
@@ -84,6 +106,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 struct Config {
     /// Separator to use in the output CSV file.
     csv_delimiter: String,
+    /// Path to the file with the prices.
+    price_file: String,
     /// List of entries to parse.
     entries: Vec<FileEntry>,
 }

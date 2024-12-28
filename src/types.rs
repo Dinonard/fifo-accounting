@@ -244,6 +244,12 @@ impl Transaction {
             Some(self.output_amount / self.input_amount)
         }
     }
+
+    /// Check if the transaction is 'zero-cost', meaning that some asset was
+    /// acquired for **zero** fiat amount. E.g. interest received or an airdrop.
+    pub fn is_zero_cost(&self) -> bool {
+        self.tx_type.is_zero_cost()
+    }
 }
 
 impl Display for Transaction {
