@@ -1,10 +1,12 @@
 mod fifo;
 mod parser;
+mod price_provider;
 mod types;
 mod validation;
 
 use clap::Parser;
 use fifo::InventoryItem;
+use price_provider::BasicPriceProvider;
 use types::OutputLine;
 
 use serde::Deserialize;
@@ -23,6 +25,8 @@ struct CmdArgs {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
+
+    // let bpp = BasicPriceProvider::new("Prices.toml")?;
 
     // 0. Parse the config file
     let cmd_args = CmdArgs::parse();

@@ -26,7 +26,7 @@
 //! The input amount of the original transaction & the output amount of the swap are fragmented in the same way.
 
 use crate::types::{AssetType, OutputLine, Transaction, TransactionType};
-use chrono::{Datelike, NaiveDateTime};
+use chrono::{Datelike, NaiveDate};
 use itertools::Itertools;
 use rust_decimal::Decimal;
 use std::{
@@ -40,10 +40,10 @@ pub struct InventoryItem {
     /// Ordinal number of the transaction in the ledger.
     ordinal: u32,
     /// Date on which the transaction was made.
-    date: NaiveDateTime,
+    date: NaiveDate,
     /// Date on which the acquisition of the origin asset was made.
     /// E.g. the date when origin asset was acquired via an invoice.
-    acquisition_date: NaiveDateTime,
+    acquisition_date: NaiveDate,
     /// Type of the input asset.
     input_type: AssetType,
     /// Input amount consumed from the transaction.

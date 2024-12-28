@@ -1,5 +1,6 @@
-use chrono::NaiveDateTime;
+use chrono::NaiveDate;
 use rust_decimal::Decimal;
+use serde::Deserialize;
 
 use std::{
     fmt::{self, Display, Formatter},
@@ -69,7 +70,7 @@ impl Display for TransactionType {
 
 /// Represents an asset that can be traded or held in the 'ledger'.
 /// E.g. ASTR or BTC or USD (fiat).
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum AssetType {
     ASTR,
@@ -147,7 +148,7 @@ pub struct Transaction {
     /// Ordinal number of the transaction in the ledger.
     ordinal: u32,
     /// Date on which the transaction was made.
-    date: NaiveDateTime,
+    date: NaiveDate,
     /// Type of transaction (e.g. selling or a swap)
     tx_type: TransactionType,
     /// Type of the input token.
@@ -166,7 +167,7 @@ impl Transaction {
     /// Create a new `Transaction` instance.
     pub fn new(
         ordinal: u32,
-        date: NaiveDateTime,
+        date: NaiveDate,
         tx_type: TransactionType,
         input_type: AssetType,
         input_amount: Decimal,
@@ -198,7 +199,7 @@ impl Transaction {
     }
 
     /// Date on which the transaction was made.
-    pub fn date(&self) -> NaiveDateTime {
+    pub fn date(&self) -> NaiveDate {
         self.date
     }
 

@@ -1,5 +1,5 @@
 use calamine::{Data, DataType};
-use chrono::NaiveDateTime;
+use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use std::collections::{hash_map::Entry, HashMap};
 use std::str::FromStr;
@@ -59,12 +59,15 @@ pub fn parse_row(row: &[Data]) -> Result<Transaction, String> {
         Data::DateTime(date) => date,
         _ => return Err(format!("Second column must be a date, skipping: {:?}", row)),
     };
-    let date = date.as_datetime().ok_or_else(|| {
-        format!(
-            "Cannot convert second column date to `Datetime`, skipping: {:?}",
-            row
-        )
-    })?;
+    let date = date
+        .as_datetime()
+        .ok_or_else(|| {
+            format!(
+                "Cannot convert second column date to `Datetime`, skipping: {:?}",
+                row
+            )
+        })?
+        .date();
 
     // 3. Parse the action type.
     let action_type = if let Data::String(value) = &row[2] {
@@ -146,7 +149,7 @@ pub fn validate_sheet(
     sheet_name: &str,
 ) -> Result<HashMap<AssetType, Decimal>, String> {
     let mut previous_ordinal = 0;
-    let mut previous_date = NaiveDateTime::default();
+    let mut previous_date = NaiveDate::default();
     let mut state = init_state;
 
     for tx in transaction {
