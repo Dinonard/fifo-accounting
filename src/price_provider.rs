@@ -18,6 +18,11 @@ pub trait PriceProvider {
     }
 }
 
+// Big TODO:
+// Implement a logic to fetch price from online price providers, like CoinGecko, CoinMarketCap, etc.
+// Also automatically convert the price from USD value to EUR value.
+// Doing this manually is cumbersome.
+
 /// A basic solution for the 'price provider, which reads the prices from a file, and stores them in memory.
 ///
 /// No dynamic updates are supported, and the prices are read once from the file.
