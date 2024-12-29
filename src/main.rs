@@ -78,7 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 4. Create the ledger & process the transactions in FIFO manner.
-    let mut ledger = fifo::Ledger::new(transactions);
+    let mut ledger = fifo::Ledger::new(transactions, price_provider);
     println!("{}", ledger.yearly_income_loss_report());
 
     // 5. Generate the output CSV file.

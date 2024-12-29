@@ -25,7 +25,10 @@
 //!
 //! The input amount of the original transaction & the output amount of the swap are fragmented in the same way.
 
-use crate::types::{AssetType, OutputLine, Transaction, TransactionType};
+use crate::{
+    price_provider::{BasicPriceProvider, PriceProvider},
+    types::{AssetType, OutputLine, Transaction, TransactionType},
+};
 use chrono::{Datelike, NaiveDate};
 use itertools::Itertools;
 use rust_decimal::Decimal;
@@ -55,18 +58,20 @@ pub struct InventoryItem {
     /// Remaining amount for 'consumption'.
     remaining_amount: Decimal,
     /// Cost basis of the asset, i.e. the price at which it was acquired.
-    cost_basis: Option<Decimal>,
+    cost_basis: Decimal,
     /// Unit sale price of the asset, if it was sold.
     sale_price: Option<Decimal>,
     /// Parent transaction Id, if this item uses assets from another transaction.
     parent_tx: Option<usize>,
+    /// Whether the item is part of a 'sequence' of transactions which originated with a zero-cost basis transaction.
+    is_zero_cost: bool,
 }
 
 impl InventoryItem {
     /// Check whether the inventory items is part of a 'sequence' of transactions
     /// which originated with a zero-cost basis transaction like an airdrop or interest.
     pub fn is_zero_cost(&self) -> bool {
-        self.cost_basis.is_none()
+        self.is_zero_cost
     }
 
     /// `true` if the asset was sold, `false` otherwise.
@@ -83,7 +88,7 @@ impl InventoryItem {
     }
 
     /// Cost basis of the asset.
-    pub fn cost_basis(&self) -> Option<Decimal> {
+    pub fn cost_basis(&self) -> Decimal {
         self.cost_basis
     }
 
@@ -91,13 +96,15 @@ impl InventoryItem {
     /// Can be either profit or loss.
     /// If the asset was not sold yet, return `None`.
     pub fn net_amount(&self) -> Option<Decimal> {
-        match (self.cost_basis, self.sale_price) {
+        match (self.is_zero_cost, self.cost_basis, self.sale_price) {
             // 1st scenario - asset was acquired for some price, and sold afterwards.
-            (Some(cost_basis), Some(sale_price)) => {
+            (false, cost_basis, Some(sale_price)) => {
                 Some(self.input_amount * (sale_price - cost_basis))
             }
             // 2nd scenario - asset was acquired as part of some airdrop or interest.
-            (None, Some(sale_price)) => Some(self.input_amount * sale_price),
+            (true, _, Some(sale_price)) => {
+                Some(self.input_amount * sale_price)
+            }
             // 3rd scenario - asset was acquired, but not sold yet.
             _ => None,
         }
@@ -198,14 +205,17 @@ pub struct Ledger {
     transactions: Vec<Transaction>,
     /// Ledger of assets, used to keep track of the FIFO inventory.
     ledger: HashMap<AssetType, Vec<InventoryItem>>,
+    /// Price provider used to fetch the price of assets.
+    price_provider: BasicPriceProvider,
 }
 
 impl Ledger {
     /// Create a new `Ledger` instance.
-    pub fn new(transactions: Vec<Transaction>) -> Self {
+    pub fn new(transactions: Vec<Transaction>, price_provider: BasicPriceProvider) -> Self {
         let mut ledger = Ledger {
             transactions: Vec::new(), // ugly, maybe improve later
             ledger: HashMap::new(),
+            price_provider,
         };
 
         ledger.process(&transactions);
@@ -331,6 +341,7 @@ impl Ledger {
 
     /// Process a transaction which involves trading fiat for crypto.
     fn process_buying(&mut self, transaction: &Transaction) {
+        let (input_token, input_amount) = transaction.input();
         let (output_token, output_amount) = transaction.output();
 
         // TODO: provide a dedicated function to handle inner ledger manipulation.
@@ -343,15 +354,17 @@ impl Ledger {
             ordinal: transaction.ordinal(),
             date: transaction.date(),
             acquisition_date: transaction.date(),
-            // Not important for fiat
-            input_type: AssetType::EUR,
-            input_amount: Decimal::ZERO,
+            input_type: input_token,
+            input_amount,
             output_type: output_token,
             output_amount: output_amount,
             remaining_amount: output_amount,
-            cost_basis: transaction.cost_basis(),
+            cost_basis: transaction
+                .cost_basis()
+                .expect("Must be non-zero for buying transaction."),
             sale_price: None,
             parent_tx: None,
+            is_zero_cost: false,
         };
         entry.push(item);
     }
@@ -407,15 +420,13 @@ impl Ledger {
             };
 
             // TODO: docs
-            let new_cost_basis = if let Some(cost_basis) = item.cost_basis() {
-                // If output is fiat, the cost basis remains the same.
-                if output_token.is_fiat() {
-                    Some(cost_basis)
-                } else {
-                    transaction.cost_basis().map(|cb| cb * cost_basis)
-                }
+            let new_cost_basis = if output_token.is_fiat() {
+                item.cost_basis()
             } else {
-                None
+                transaction
+                    .cost_basis()
+                    .expect("Cannot fail, improve later")
+                    * item.cost_basis()
             };
 
             let new_item = InventoryItem {
@@ -431,6 +442,7 @@ impl Ledger {
                 cost_basis: new_cost_basis,
                 sale_price: transaction.sale_price(),
                 parent_tx: Some(transaction.ordinal() as usize),
+                is_zero_cost: item.is_zero_cost(),
             };
 
             new_items.push(new_item);
@@ -469,9 +481,13 @@ impl Ledger {
                 output_type: output_token,
                 output_amount: output_amount,
                 remaining_amount: output_amount,
-                cost_basis: None,
+                cost_basis: self
+                    .price_provider
+                    .get_price(output_token, transaction.date())
+                    .expect("Must exist"),
                 sale_price: None,
                 parent_tx: None,
+                is_zero_cost: true,
             });
     }
 

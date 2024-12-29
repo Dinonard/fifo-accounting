@@ -1,12 +1,16 @@
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use serde::Deserialize;
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::HashMap,
+    fmt::{self, Debug},
+    str::FromStr,
+};
 
 use super::types::AssetType;
 
 /// Trait for providing the price of a token at a given time (date).
-pub trait PriceProvider {
+pub trait PriceProvider: Debug + Clone + Eq + PartialEq {
     /// Get the price of the given token at the given time.
     ///
     /// Returns the price as a `Decimal`, or an error message if the price is not available.
@@ -26,6 +30,7 @@ pub trait PriceProvider {
 /// A basic solution for the 'price provider, which reads the prices from a file, and stores them in memory.
 ///
 /// No dynamic updates are supported, and the prices are read once from the file.
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BasicPriceProvider {
     // prices: HashMap<(AssetType, NaiveDate), Decimal>,
     prices: HashMap<(AssetType, NaiveDate), Decimal>,
