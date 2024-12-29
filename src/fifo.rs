@@ -96,17 +96,22 @@ impl InventoryItem {
     /// Can be either profit or loss.
     /// If the asset was not sold yet, return `None`.
     pub fn net_amount(&self) -> Option<Decimal> {
-        match (self.is_zero_cost, self.cost_basis, self.sale_price) {
-            // 1st scenario - asset was acquired for some price, and sold afterwards.
-            (false, cost_basis, Some(sale_price)) => {
-                Some(self.input_amount * (sale_price - cost_basis))
-            }
-            // 2nd scenario - asset was acquired as part of some airdrop or interest.
-            (true, _, Some(sale_price)) => {
-                Some(self.input_amount * sale_price)
-            }
-            // 3rd scenario - asset was acquired, but not sold yet.
-            _ => None,
+        if let Some(sale_price) = self.sale_price {
+            Some(self.input_amount * (sale_price - self.cost_basis))
+        } else {
+            None
+        }
+    }
+
+    /// Income of the 'zero-cost' asset acquisition.
+    /// Covers case when asset was acquired via e.g. an airdrop or interest.
+    ///
+    /// Returns `None` if the item is not zero-cost or if it's not the first in the sequence.
+    pub fn zero_cost_income(&self) -> Option<Decimal> {
+        if self.is_zero_cost() && self.is_first_in_sequence() {
+            Some(self.output_amount * self.cost_basis)
+        } else {
+            None
         }
     }
 
@@ -128,9 +133,12 @@ impl InventoryItem {
         let output_type = format!("{:?}", tx.output().0);
         let output_amount = format!("{}", self.output_amount);
 
-        let net_amount = self
-            .net_amount()
-            .map_or_else(|| String::from(""), |net_amount| format!("{}", net_amount));
+        let net_amount = match (self.net_amount(), self.zero_cost_income()) {
+            (Some(net_amount), None) => format!("{}", net_amount),
+            (None, Some(income)) => format!("{}", income),
+            (None, None) => String::from(""),
+            _ => panic!("Unexpected state for item: {:?}", self),
+        };
 
         OutputLine {
             ordinal,
@@ -156,9 +164,6 @@ struct YearlyReport {
     income: Decimal,
     /// Total loss from selling any assets.
     loss: Decimal,
-    /// Remaining zero-cost assets per year.
-    /// If assets were sold, they won't be included here.
-    remaining_zero_cost: HashMap<AssetType, Decimal>,
 }
 
 impl YearlyReport {
@@ -177,24 +182,14 @@ impl YearlyReport {
                 .expect("Unexpected underflow.");
         }
     }
-
-    /// Include zero-cost asset in the report.
-    /// Covers both asset acquisition and disposal.
-    fn include_zero_cost(&mut self, asset_type: AssetType, amount: Decimal) {
-        let entry = self
-            .remaining_zero_cost
-            .entry(asset_type)
-            .or_insert_with(|| Decimal::ZERO);
-        *entry += amount;
-    }
 }
 
 impl Display for YearlyReport {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
-            "Year: {}\nTotal Income: {:.2}\nTotal Loss: {:.2}\nRemaining zero-cost assets: {:#?}",
-            self.year, self.income, self.loss, self.remaining_zero_cost
+            "Year: {}\nTotal Income: {:.2}\nTotal Loss: {:.2}",
+            self.year, self.income, self.loss,
         )
     }
 }
@@ -205,6 +200,7 @@ pub struct Ledger {
     transactions: Vec<Transaction>,
     /// Ledger of assets, used to keep track of the FIFO inventory.
     ledger: HashMap<AssetType, Vec<InventoryItem>>,
+    // TODO: improve later, use dyn trait instead
     /// Price provider used to fetch the price of assets.
     price_provider: BasicPriceProvider,
 }
@@ -259,38 +255,16 @@ impl Ledger {
                 year,
                 income: Decimal::ZERO,
                 loss: Decimal::ZERO,
-                remaining_zero_cost: HashMap::new(),
             });
 
-            // In case item represents a _selling_ action, include the net amount.
+            // In case item represents a selling action, include the net amount.
             if let Some(net_amount) = item.net_amount() {
                 report.include_net_result(net_amount);
             }
 
-            // TODO: This is the wrong approach and won't work.
-            // Some things are missing & need to be accounted for.
-            //
-            // Scenario |
-            // ---------|
-            // 1) 100 ASTR is received as interest in 2023.
-            // 2) 60 ASTR is sold in 2023, and that's treated as pure income.
-            // 3) Remaining 40 ASTR is treated as _income_ at the end of 2023, based on the end-of-year price.
-            // 4) Remaining 40 ASTR is sold in 2024, and that's treated as income or loss, compared to what was
-            //    recorded at the end of 2023.
-            //    E.g. if it was valued 0.05$ at the EoY, and now it's sold for 0.06$, the _profit_ is 0.01$.
-            //
-            // What does this mean?
-            // - We need to keep track of the _end-of-year_ prices for all assets to correctly calculate gain or loss.
-            // - When swapping or selling asset, we need to check historically whether the input asset was acquired in previous year.
-
-            // In case item represents zero-cost asset acquisition, track it.
-            if item.is_zero_cost() && item.is_first_in_sequence() {
-                report.include_zero_cost(item.output_type, item.output_amount);
-            } else if item.is_zero_cost() && !item.is_sell() {
-                report.include_zero_cost(item.output_type, item.output_amount);
-                report.include_zero_cost(item.input_type, -item.input_amount);
-            } else if item.is_zero_cost() && item.is_sell() {
-                report.include_zero_cost(item.input_type, -item.input_amount);
+            // In case item is zero-cost, include it as pure income.
+            if let Some(income) = item.zero_cost_income() {
+                report.include_net_result(income);
             }
         }
 
