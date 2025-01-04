@@ -46,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Configuration files loaded successfully.");
 
     // 1. Parse the XLSX files and validate the data.
+    // NOTE: If user wants to have different data source, they should modify the line below with their own implementation.
     let xlsx_parser = XlsxParser::new(config.entries);
     let transactions = xlsx_parser.parse()?;
     log::info!("Finished parsing all transactions.");

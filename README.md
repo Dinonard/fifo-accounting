@@ -5,11 +5,11 @@
 Simple FIFO accounting system to be used for easy crypto currency accounting.
 The system takes a list of files with transactions as the input, and produces a FIFO accounting report as the output.
 
-**NOTE: This is still under development, and not everything is correct yet.**
+**NOTE: This is still under development.**
 
 ## Usage
 
-Configure the `.toml` file:
+Configure the `Config.toml` file:
 
 ```toml
 csv_delimiter = ";"
@@ -25,8 +25,11 @@ sheet = "2024"
 start_row = 14
 ```
 
-Sheets should be provided in the order they should be processed.
-This might change in the future.
+Files & sheets can be provided in any order.
+The transactions must be sequential per file (monotonically increasing date), and it's not allowed to go into negative balance (e.g. user cannot have **-0.01 BTC** at any point).
+
+The `Prices.toml` file is used to provide program with token prices in **EUR**.
+If any price is missing for a specific date, the program will inform user about it and terminate.
 
 Check the binary options:
 
@@ -46,3 +49,31 @@ Run the binary:
 ```bash
 cargo run -- -c Config.toml -f fifo_output.csv
 ```
+
+## Expected XMLX Format
+
+Expected format is:
+
+| Ordinal | Date | Transaction Type | Input Token | Input Amount | Output Token | Output Amount | Note | Additional Info |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+Where:
+
+* `Ordinal` is a simple ordinal number, e.g. **1**, **2**, **3**.
+* `Date` is a date in the format on which the transaction happened. E.g. **12-Dec-2024**. Various formats are supported.
+* `Transaction Type` is the type of the transaction. E.g. **Buy**, **Sell**, **Transfer**, etc.
+* `Input Token` is the name (string) of the input type for the transaction. E.g. **BTC**.
+* `Input Amount` is the amount of the input token. E.g. **0.14345**.
+* `Output Token` is the name (string) of the output type for the transaction. E.g. **EUR**.
+* `Output Amount` is the amount of the output token. E.g. **1000.23**.
+* `Note` is a note for the transaction. E.g. **DEX Swap**. It's free form text, irrelevant for this program.
+* `Additional Info` is additional free form text, used to provide more extensive information about the transaction. E.g. link to the transaction on the block explorer.
+
+For the list of valid `Transaction Types`, please refer to the code.
+
+One example of a transaction:
+
+| Ordinal | Date | Transaction Type | Input Token | Input Amount | Output Token | Output Amount | Note | Additional Info |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 12-Dec-2024 | Swap | ASTR | 10000 | USDT | 644.345 | DEX Swap | _link to the transaction on block explorer_ |
+| 2 | 12-Dec-2024 | Swap | BTC | 1 | ETH | 25 | Binance |  |
