@@ -3,7 +3,7 @@ mod price_provider;
 mod validation;
 mod xlsx_parser;
 
-use fifo_types::{DataParser, MissingPricesCheck, OutputLine, PriceProvider};
+use fifo_types::{DataParser, MissingPricesCheck, OutputLine};
 use price_provider::BasicPriceProvider;
 use xlsx_parser::{XlsxFileEntry, XlsxParser};
 
@@ -74,10 +74,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 3. Create the ledger & process the transactions in FIFO manner.
-    let mut ledger = fifo::Ledger::new(transactions, price_provider);
-    println!("{}", ledger.yearly_income_loss_report());
+    let ledger = fifo::Ledger::new(transactions, price_provider);
 
-    // 5. Generate the output CSV file.
+    log::info!("Yearly income/loss reports:");
+    ledger
+        .yearly_income_loss_report()
+        .iter()
+        .for_each(|report| log::info!("{}", report));
+
+    // 4. Generate the output CSV file.
     let lines = ledger
         .output_lines()
         .into_iter()
@@ -86,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Write the output to a file.
     std::fs::write(
-        cmd_args.fifo_output,
+        &cmd_args.fifo_output,
         format!(
             "{}\n{}",
             OutputLine::csv_header(config.csv_delimiter),
@@ -94,7 +99,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
     )
     .unwrap();
+    log::info!("FIFO breakdown written to file: {}", cmd_args.fifo_output);
 
+    log::info!("Thank you so much for using this program!");
     Ok(())
 }
 

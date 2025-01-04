@@ -186,7 +186,7 @@ impl Display for YearlyReport {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
-            "Year: {}\nTotal Income: {:.2}\nTotal Loss: {:.2}",
+            "Year {}: Total Income: {:.2}; Total Loss: {:.2}",
             self.year, self.income, self.loss,
         )
     }
@@ -243,7 +243,7 @@ impl<PP: PriceProvider> Ledger<PP> {
     }
 
     // TODO
-    pub fn yearly_income_loss_report(&self) -> String {
+    pub fn yearly_income_loss_report(&self) -> Vec<String> {
         let mut total_report = HashMap::<Year, YearlyReport>::new();
 
         for item in self.in_order() {
@@ -268,8 +268,7 @@ impl<PP: PriceProvider> Ledger<PP> {
         total_report
             .into_iter()
             .sorted_by_key(|(year, _)| *year)
-            .map(|(year, report)| format!("{}\n------{}", year, report))
-            .intersperse("\n".to_string())
+            .map(|(_, report)| format!("{}", report))
             .collect()
     }
 
