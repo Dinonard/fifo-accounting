@@ -25,7 +25,6 @@
 //!
 //! The input amount of the original transaction & the output amount of the swap are fragmented in the same way.
 
-use crate::price_provider::BasicPriceProvider;
 use fifo_types::{AssetType, OutputLine, PriceProvider, Transaction, TransactionType};
 
 use chrono::{Datelike, NaiveDate};
@@ -194,19 +193,18 @@ impl Display for YearlyReport {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Ledger {
+pub struct Ledger<PP: PriceProvider> {
     /// List of all transactions, in order.
     transactions: Vec<Transaction>,
     /// Ledger of assets, used to keep track of the FIFO inventory.
     ledger: HashMap<AssetType, Vec<InventoryItem>>,
-    // TODO: improve later, use dyn trait instead
     /// Price provider used to fetch the price of assets.
-    price_provider: BasicPriceProvider,
+    price_provider: PP,
 }
 
-impl Ledger {
+impl<PP: PriceProvider> Ledger<PP> {
     /// Create a new `Ledger` instance.
-    pub fn new(transactions: Vec<Transaction>, price_provider: BasicPriceProvider) -> Self {
+    pub fn new(transactions: Vec<Transaction>, price_provider: PP) -> Self {
         let mut ledger = Ledger {
             transactions: Vec::new(), // ugly, maybe improve later
             ledger: HashMap::new(),
