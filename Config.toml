@@ -11,11 +11,11 @@ csv_delimiter = ";"
 price_file = "Prices.toml"
 
 [[entries]]
-path = "balances.xlsx"
-sheet = "2023"
+file_path = "balances.xlsx"
+sheet_name = "2023"
 start_row = 1
 
 [[entries]]
-path = "balances.xlsx"
-sheet = "2024"
+file_path = "balances.xlsx"
+sheet_name = "2024"
 start_row = 16

@@ -1,11 +1,10 @@
-use chrono::NaiveDate;
-use rust_decimal::Decimal;
-use serde::Deserialize;
-
 use std::{
     fmt::{self, Display, Formatter},
     str::FromStr,
 };
+use serde::Deserialize;
+use chrono::NaiveDate;
+use rust_decimal::Decimal;
 
 /// Type of transactions that modify the balance of any asset in the 'ledger'.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -28,7 +27,7 @@ pub enum TransactionType {
     Transfer,
     /// Asset was received as part of an airdrop.
     Airdrop,
-    /// Asset was locked in some protocol.
+    /// Asset was locked or unlocked in some protocol.
     Lock,
     /// Fees paid to execute transactions
     Fees,
@@ -38,18 +37,18 @@ impl FromStr for TransactionType {
     type Err = ();
 
     fn from_str(input: &str) -> Result<TransactionType, Self::Err> {
-        match input {
-            "Invoice" => Ok(TransactionType::Invoice),
-            "Swap" => Ok(TransactionType::Swap),
-            "Interest" => Ok(TransactionType::Interest),
-            "Buying" => Ok(TransactionType::Buying),
-            "Selling" => Ok(TransactionType::Selling),
-            "Bridge" => Ok(TransactionType::Bridge),
-            "NFT" => Ok(TransactionType::Nft),
-            "Transfer" => Ok(TransactionType::Transfer),
-            "Airdrop" => Ok(TransactionType::Airdrop),
-            "Lock" => Ok(TransactionType::Lock),
-            "Fees" => Ok(TransactionType::Fees),
+        match input.to_lowercase().as_str() {
+            "invoice" => Ok(TransactionType::Invoice),
+            "swap" => Ok(TransactionType::Swap),
+            "interest" => Ok(TransactionType::Interest),
+            "buying" => Ok(TransactionType::Buying),
+            "selling" => Ok(TransactionType::Selling),
+            "bridge" => Ok(TransactionType::Bridge),
+            "nft" => Ok(TransactionType::Nft),
+            "transfer" => Ok(TransactionType::Transfer),
+            "airdrop" => Ok(TransactionType::Airdrop),
+            "lock" => Ok(TransactionType::Lock),
+            "fees" => Ok(TransactionType::Fees),
             _ => Err(()),
         }
     }
@@ -70,6 +69,8 @@ impl Display for TransactionType {
 
 /// Represents an asset that can be traded or held in the 'ledger'.
 /// E.g. ASTR or BTC or USD (fiat).
+///
+/// Asset type is always in uppercase.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct AssetType(String);
 // TODO: change from enum to this struct resulted in adding lots of 'clone' calls
@@ -242,48 +243,5 @@ impl Display for Transaction {
             self.output_type,
             self.tx_type
         )
-    }
-}
-
-/// Contains data for a _single line_ in the output of the program.
-/// This is used to generate a CSV file with the final state of the ledger.
-pub struct OutputLine {
-    pub ordinal: String,
-    pub date: String,
-    pub action: String,
-    pub input_type: String,
-    pub input_amount: String,
-    pub output_type: String,
-    pub output_amount: String,
-    pub net_amount: String,
-}
-
-impl OutputLine {
-    pub fn csv_header(delimiter: String) -> String {
-        vec![
-            "Ordinal",
-            "Date",
-            "Action",
-            "Input Type",
-            "Input Amount",
-            "Output Type",
-            "Output Amount",
-            "Net Amount",
-        ]
-        .join(&delimiter)
-    }
-
-    pub fn to_csv_line(self, delimiter: String) -> String {
-        vec![
-            self.ordinal,
-            self.date,
-            self.action,
-            self.input_type,
-            self.input_amount,
-            self.output_type,
-            self.output_amount,
-            self.net_amount,
-        ]
-        .join(&delimiter)
     }
 }

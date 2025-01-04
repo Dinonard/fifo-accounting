@@ -3,20 +3,7 @@ use rust_decimal::Decimal;
 use serde::Deserialize;
 use std::{collections::HashMap, fmt::Debug, str::FromStr};
 
-use super::types::AssetType;
-
-/// Trait for providing the price of a token at a given time (date).
-pub trait PriceProvider: Debug + Clone + Eq + PartialEq {
-    /// Get the price of the given token at the given time.
-    ///
-    /// Returns the price as a `Decimal`, or an error message if the price is not available.
-    fn get_price(&self, token: AssetType, date: NaiveDate) -> Result<Decimal, String>;
-
-    /// Check if the price for the given token at the given date is available.
-    fn contains_price(&self, token: AssetType, date: NaiveDate) -> bool {
-        self.get_price(token, date).is_ok()
-    }
-}
+use fifo_types::{AssetType, MissingPricesCheck, PriceProvider, Transaction};
 
 // Big TODO:
 // Implement a logic to fetch price from online price providers, like CoinGecko, CoinMarketCap, etc.
@@ -74,6 +61,21 @@ impl PriceProvider for BasicPriceProvider {
                 token, date
             )),
         }
+    }
+}
+
+impl MissingPricesCheck for BasicPriceProvider {
+    fn missing_prices(&self, transactions: &[Transaction]) -> Vec<(AssetType, NaiveDate)> {
+        transactions
+            .iter()
+            .filter_map(|tx| {
+                if tx.is_zero_cost() && !self.contains_price(tx.output().0, tx.date()) {
+                    Some((tx.output().0, tx.date()))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
     }
 }
 

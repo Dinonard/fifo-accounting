@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 use std::collections::{hash_map::Entry, HashMap};
 use std::str::FromStr;
 
-use crate::types::{AssetType, Transaction, TransactionType};
+use fifo_types::{AssetType, Transaction, TransactionType};
 
 /// Validate the row data against the expected format, and return the `Transaction`.
 /// Each row is validated on its own, without any context of the previous rows.
@@ -128,7 +128,7 @@ pub fn parse_row(row: &[Data]) -> Result<Transaction, String> {
     ))
 }
 
-/// Validate the transactions in the sheet, and return the final state of the ledger.
+/// Validate the transactions, and return the final state of the ledger.
 /// There are several checks performed:
 /// 1. The ordinal number should be sequential, starting at one and increasing by one.
 /// 2. The dates should be monotonically increasing.
@@ -143,16 +143,14 @@ pub fn parse_row(row: &[Data]) -> Result<Transaction, String> {
 /// # Returns
 /// * `HashMap<AssetType, Decimal>` - If the transactions are valid, return the final state of the ledger.
 /// * `String` - If the transactions are invalid, return an error message.
-pub fn validate_sheet(
-    transaction: &Vec<Transaction>,
-    init_state: HashMap<AssetType, Decimal>,
-    sheet_name: &str,
+pub fn context_validation(
+    transactions: &Vec<Transaction>,
 ) -> Result<HashMap<AssetType, Decimal>, String> {
     let mut previous_ordinal = 0;
-    let mut previous_date = NaiveDate::default();
-    let mut state = init_state;
+    let mut previous_date = NaiveDate::MIN;
+    let mut state = HashMap::<AssetType, Decimal>::default();
 
-    for tx in transaction {
+    for tx in transactions {
         // 1. Validate the ordinal number.
         if tx.ordinal() != previous_ordinal + 1 {
             return Err(format!(
@@ -189,8 +187,7 @@ pub fn validate_sheet(
                             && new_value > -Decimal::from_str("0.1").unwrap()
                         {
                             log::warn!(
-                                "Sheet: {}; Negative balance of {} for {:?} after transaction: {:?}",
-                                sheet_name,
+                                "Negative balance of {} for {:?} after transaction: {:?}",
                                 new_value,
                                 input_token,
                                 tx
@@ -245,8 +242,7 @@ pub fn validate_sheet(
         // Log this as a warning, but don't fail the validation.
         if output_token != AssetType::EUR() && output_token.is_fiat() {
             log::warn!(
-                "Sheet: {}; Selling for non-EUR fiat {:?} in transaction: {:?}. Take the EUR value instead at the transaction date.",
-                sheet_name,
+                "Selling for non-EUR fiat {:?} in transaction: {:?}. Take the EUR value instead at the transaction date.",
                 output_token,
                 tx
             );

@@ -25,10 +25,9 @@
 //!
 //! The input amount of the original transaction & the output amount of the swap are fragmented in the same way.
 
-use crate::{
-    price_provider::{BasicPriceProvider, PriceProvider},
-    types::{AssetType, OutputLine, Transaction, TransactionType},
-};
+use crate::price_provider::BasicPriceProvider;
+use fifo_types::{AssetType, OutputLine, PriceProvider, Transaction, TransactionType};
+
 use chrono::{Datelike, NaiveDate};
 use itertools::Itertools;
 use rust_decimal::Decimal;
@@ -194,7 +193,7 @@ impl Display for YearlyReport {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct Ledger {
     /// List of all transactions, in order.
     transactions: Vec<Transaction>,

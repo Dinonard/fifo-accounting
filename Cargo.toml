@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+
+# Local dependencies
+fifo-types = { path = "./src/fifo-types" }
+
+# External dependencies
 calamine = { version = "0.26.1", features = ["dates"] }
 chrono = "0.4.38"
 clap = { version = "4.5.23", features = ["derive"] }
