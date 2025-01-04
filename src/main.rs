@@ -5,8 +5,8 @@ mod types;
 mod validation;
 
 use clap::Parser;
-use fifo::InventoryItem;
 use price_provider::{BasicPriceProvider, PriceProvider};
+use std::collections::HashSet;
 use types::OutputLine;
 
 use serde::Deserialize;
@@ -41,6 +41,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         transactions.extend(sheet.into_iter());
     }
+
+    let asset_types = transactions
+        .iter()
+        .map(|tx| vec![tx.output().0.inner(), tx.input().0.inner()])
+        .flatten()
+        .collect::<HashSet<_>>();
+    println!("Unique Asset types:\n {:#?}", asset_types);
 
     // 2. Assign ascending ordinals to all transactions.
     let mut counter: u32 = 0;

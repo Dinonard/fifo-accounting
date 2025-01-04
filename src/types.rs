@@ -70,40 +70,37 @@ impl Display for TransactionType {
 
 /// Represents an asset that can be traded or held in the 'ledger'.
 /// E.g. ASTR or BTC or USD (fiat).
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
-#[allow(clippy::upper_case_acronyms)]
-pub enum AssetType {
-    ASTR,
-    SDN,
-    USDC,
-    USDT,
-    BTC,
-    ETH,
-    ADA,
-    USD,
-    EUR,
-    HAHA,
-    LockedAstr,
-    PINK,
-    WBTC,
-    WETH,
-    EMPTY,
-}
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+pub struct AssetType(String);
+// TODO: change from enum to this struct resulted in adding lots of 'clone' calls
+// which is ugly & inefficient. Come up with a better solution later.
 
 impl AssetType {
     /// Check if the asset is a fiat currency.
     pub fn is_fiat(&self) -> bool {
-        matches!(self, Self::USD | Self::EUR)
+        matches!(&self.0[..], "USD" | "EUR")
     }
 
     /// Check if the asset is a cryptocurrency.
     pub fn is_crypto(&self) -> bool {
-        !self.is_fiat() && *self != Self::EMPTY
+        !self.is_fiat() && !self.0.is_empty()
     }
 
     /// Check if the asset is a stablecoin.
     pub fn is_stablecoin(&self) -> bool {
-        matches!(self, Self::USDC | Self::USDT)
+        matches!(&self.0[..], "USDC" | "USDT")
+    }
+
+    /// Consume self, return inner string.
+    pub fn inner(self) -> String {
+        self.0
+    }
+
+    // TODO: improvement idea - add some sort of getters for some asset types,
+    // make them efficient (shouldn't be initialized each time?)
+    #[allow(non_snake_case)]
+    pub fn EUR() -> Self {
+        AssetType("EUR".to_string())
     }
 }
 
@@ -111,34 +108,13 @@ impl FromStr for AssetType {
     type Err = ();
 
     fn from_str(input: &str) -> Result<AssetType, Self::Err> {
-        // First make sure to:
-        // 1. remove any '(fiat)' parts from the input string
-        // 2. trim the input string
-        // 3. convert the input string to uppercase
-        let input = input
-            .to_uppercase()
-            .replace("(FIAT)", "")
-            .trim()
-            .to_string();
+        Ok(AssetType(input.to_uppercase().trim().to_string()))
+    }
+}
 
-        match input.as_str() {
-            "ASTR" => Ok(AssetType::ASTR),
-            "SDN" => Ok(AssetType::SDN),
-            "USDC" => Ok(AssetType::USDC),
-            "USDT" => Ok(AssetType::USDT),
-            "BTC" => Ok(AssetType::BTC),
-            "ETH" => Ok(AssetType::ETH),
-            "ADA" => Ok(AssetType::ADA),
-            "USD" => Ok(AssetType::USD),
-            "EUR" => Ok(AssetType::EUR),
-            "HAHA" => Ok(AssetType::HAHA),
-            "LOCKED ASTR" => Ok(AssetType::LockedAstr),
-            "PINK" => Ok(AssetType::PINK),
-            "WBTC" => Ok(AssetType::WBTC),
-            "WETH" => Ok(AssetType::WETH),
-            "EMPTY" => Ok(AssetType::EMPTY),
-            _ => Err(()),
-        }
+impl Display for AssetType {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -210,12 +186,12 @@ impl Transaction {
 
     /// Input token and amount.
     pub fn input(&self) -> (AssetType, Decimal) {
-        (self.input_type, self.input_amount)
+        (self.input_type.clone(), self.input_amount)
     }
 
     /// Output token and amount.
     pub fn output(&self) -> (AssetType, Decimal) {
-        (self.output_type, self.output_amount)
+        (self.output_type.clone(), self.output_amount)
     }
 
     /// Free text note about the transaction.

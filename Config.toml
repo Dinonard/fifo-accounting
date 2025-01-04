@@ -18,4 +18,4 @@ start_row = 1
 [[entries]]
 path = "balances.xlsx"
 sheet = "2024"
-start_row = 14
+start_row = 16

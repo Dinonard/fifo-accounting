@@ -251,7 +251,7 @@ impl Ledger {
 
         for item in self.in_order() {
             let year = item.date.year();
-            let mut report = total_report.entry(year).or_insert_with(|| YearlyReport {
+            let report = total_report.entry(year).or_insert_with(|| YearlyReport {
                 year,
                 income: Decimal::ZERO,
                 loss: Decimal::ZERO,
@@ -321,7 +321,10 @@ impl Ledger {
         // TODO: provide a dedicated function to handle inner ledger manipulation.
         // This should be especially useful when finding an entry.
 
-        let entry = self.ledger.entry(output_token).or_insert_with(Vec::new);
+        let entry = self
+            .ledger
+            .entry(output_token.clone())
+            .or_insert_with(Vec::new);
 
         // Create a new inventory item for the transaction.
         let item = InventoryItem {
@@ -407,9 +410,9 @@ impl Ledger {
                 ordinal: transaction.ordinal(),
                 date: transaction.date(),
                 acquisition_date: item.date,
-                input_type: input_token,
+                input_type: input_token.clone(),
                 input_amount: consumed_amount,
-                output_type: output_token,
+                output_type: output_token.clone(),
                 output_amount: new_amount,
                 remaining_amount: new_amount,
                 // Chaining rule applies here.
@@ -433,7 +436,7 @@ impl Ledger {
 
         // Add the new items to the ledger.
         self.ledger
-            .entry(output_token)
+            .entry(output_token.clone())
             .or_insert_with(Vec::new)
             .extend(new_items);
     }
@@ -444,15 +447,15 @@ impl Ledger {
         let (output_token, output_amount) = transaction.output();
 
         self.ledger
-            .entry(output_token)
+            .entry(output_token.clone())
             .or_insert_with(Vec::new)
             .push(InventoryItem {
                 ordinal: transaction.ordinal(),
                 date: transaction.date(),
                 acquisition_date: transaction.date(),
-                input_type: AssetType::EUR,
+                input_type: AssetType::EUR(),
                 input_amount: Decimal::ZERO,
-                output_type: output_token,
+                output_type: output_token.clone(),
                 output_amount: output_amount,
                 remaining_amount: output_amount,
                 cost_basis: self
@@ -477,7 +480,7 @@ impl Ledger {
                 transaction.tx_type(),
                 input_type,
                 input_amount - output_amount,
-                AssetType::EUR,
+                AssetType::EUR(),
                 Decimal::ZERO,
                 transaction.note().to_string(),
             );

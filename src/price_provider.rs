@@ -1,11 +1,7 @@
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use serde::Deserialize;
-use std::{
-    collections::HashMap,
-    fmt::{self, Debug},
-    str::FromStr,
-};
+use std::{collections::HashMap, fmt::Debug, str::FromStr};
 
 use super::types::AssetType;
 
@@ -54,7 +50,7 @@ impl BasicPriceProvider {
             let date = NaiveDate::parse_from_str(&date, "%d-%b-%Y")
                 .map_err(|e| format!("Failed to parse date: '{}', with error: {}", date, e))?;
 
-            if prices_map.contains_key(&(token, date)) {
+            if prices_map.contains_key(&(token.clone(), date)) {
                 log::warn!(
                     "Duplicate price entry for token '{:?}' and date '{}'",
                     token,
@@ -71,7 +67,7 @@ impl BasicPriceProvider {
 
 impl PriceProvider for BasicPriceProvider {
     fn get_price(&self, token: AssetType, date: NaiveDate) -> Result<Decimal, String> {
-        match self.prices.get(&(token, date)) {
+        match self.prices.get(&(token.clone(), date)) {
             Some(price) => Ok(*price),
             None => Err(format!(
                 "Price not found for token '{:?}' at date '{}'",

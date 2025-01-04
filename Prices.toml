@@ -1,34 +1,59 @@
 [[price]]
-  token = "ASTR"
-  price = 0.1357
-  date = "29-Dec-2023"
+token = "ASTR"
+price = 0.1357
+date = "29-Dec-2023"
 
 [[price]]
-  token = "USDT"
-  price = 0.92
-  date = "05-Apr-2024"
+token = "USDT"
+price = 0.92
+date = "05-Apr-2024"
 
 [[price]]
-  token = "PINK"
-  price = 0.004004
-  date = "05-Apr-2024"
+token = "PINK"
+price = 0.004004
+date = "05-Apr-2024"
 
 [[price]]
-  token = "PINK"
-  price = 0.004004
-  date = "12-Apr-2024"
+token = "PINK"
+price = 0.004004
+date = "12-Apr-2024"
 
 [[price]]
-  token = "USDT"
-  price = 0.9356
-  date = "24-Jun-2024"
+token = "USDT"
+price = 0.9356
+date = "24-Jun-2024"
 
 [[price]]
-  token = "ASTR"
-  price = 0.09334
-  date = "30-Jun-2024"
+token = "ASTR"
+price = 0.09334
+date = "30-Jun-2024"
 
 [[price]]
-  token = "SDN"
-  price = 0.1260
-  date = "12-Sep-2024"
+token = "SDN"
+price = 0.1260
+date = "12-Sep-2024"
+
+[[price]]
+token = "SDN"
+price = 0.1518
+date = "31-Dec-2024"
+
+[[price]]
+token = "ASTR"
+price = 0.0582
+date = "31-Dec-2024"
+
+[[price]]
+token = "ETH"
+price = 3225.32
+date = "31-Dec-2024"
+
+[[price]]
+token = "USDC"
+price = 0.96
+date = "31-Dec-2024"
+
+[[price]]
+token = "ADA"
+price = 0.8264
+date = "31-Dec-2024"

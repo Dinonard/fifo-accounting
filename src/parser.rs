@@ -57,8 +57,8 @@ pub fn parse_xlsx_file(
         for row in range.rows().skip(row_number).take(3) {
             if row.get(1) != Some(&Data::Empty) {
                 return Err(format!(
-                    "Row {:?}, number {}, has non-empty cells after the first empty cell - please check!",
-                    row, row_number,
+                    "Row {:?}, number {} in sheet {}, has non-empty cells after the first empty cell - please check!",
+                    row, row_number, sheet_name
                 ).into());
             }
 

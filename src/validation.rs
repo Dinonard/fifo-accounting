@@ -179,7 +179,7 @@ pub fn validate_sheet(
 
         // 3.1. Subtract the input amount in case it's not fiat.
         if input_token.is_crypto() {
-            match state.entry(input_token) {
+            match state.entry(input_token.clone()) {
                 Entry::Occupied(mut entry) => {
                     let entry = entry.get_mut();
 
@@ -222,7 +222,7 @@ pub fn validate_sheet(
 
         // 3.2. Add the output amount in case it's not fiat.
         if output_token.is_crypto() {
-            match state.entry(output_token) {
+            match state.entry(output_token.clone()) {
                 Entry::Occupied(mut entry) => {
                     let entry = entry.get_mut();
 
@@ -243,7 +243,7 @@ pub fn validate_sheet(
 
         // Selling for fiat, but not EUR.
         // Log this as a warning, but don't fail the validation.
-        if !matches!(output_token, AssetType::EUR) && output_token.is_fiat() {
+        if output_token != AssetType::EUR() && output_token.is_fiat() {
             log::warn!(
                 "Sheet: {}; Selling for non-EUR fiat {:?} in transaction: {:?}. Take the EUR value instead at the transaction date.",
                 sheet_name,
