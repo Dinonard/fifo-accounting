@@ -7,6 +7,8 @@ The system takes a list of files with transactions as the input, and produces a 
 
 **NOTE: This is still under development.**
 
+_Please check the `main.rs` to see how to include custom logic for parsing the file._
+
 ## Usage
 
 Configure the `Config.toml` file:

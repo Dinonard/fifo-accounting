@@ -183,16 +183,7 @@ pub fn context_validation(
 
                     if let Some(new_value) = entry.checked_sub(input_amount) {
                         // TODO: revise this later - tolerance should differ for different tokens
-                        if new_value < Decimal::ZERO
-                            && new_value > -Decimal::from_str("0.1").unwrap()
-                        {
-                            log::warn!(
-                                "Negative balance of {} for {:?} after transaction: {:?}",
-                                new_value,
-                                input_token,
-                                tx
-                            );
-                        } else if new_value < Decimal::ZERO {
+                        if new_value < Decimal::ZERO {
                             return Err(format!(
                                 "Negative balance of {} for {:?} after transaction: {:?}",
                                 new_value, input_token, tx
