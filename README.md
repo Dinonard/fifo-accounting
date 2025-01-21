@@ -7,8 +7,6 @@ The system takes a list of files with transactions as the input, and produces a 
 
 **NOTE: This is still under development.**
 
-_Please check the `main.rs` to see how to include custom logic for parsing the file._
-
 ## Usage
 
 Configure the `Config.toml` file:
@@ -79,3 +77,30 @@ One example of a transaction:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | 12-Dec-2024 | Swap | ASTR | 10000 | USDT | 644.345 | DEX Swap | _link to the transaction on block explorer_ |
 | 2 | 12-Dec-2024 | Swap | BTC | 1 | ETH | 25 | Binance |  |
+
+## Custom Data Parser
+
+It is possible to easily modify the program to support different data formats by adding a custom parser.
+
+To do so, user should only implement the following iterator trait like:
+
+```Rust
+
+use fifo_types::{ParserDataType, Transaction};
+
+pub struct CustomParser;
+
+impl Iterator<Item = ParserDataType> for CustomParser {
+    fn next(&mut self) -> Option<ParserDataType> {
+        // Implement the custom parser here
+    }
+}
+```
+
+This _custom parser_ can then be turned into the `TransactionsProvider` in the `main.rs` file:
+
+```Rust
+let tx_provider: TransactionProvider<_> = CustomParser::new(...).into();
+```
+
+Rest of the pipeline remains the same and can be reused.
