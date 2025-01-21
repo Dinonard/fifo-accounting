@@ -71,8 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Convenience for the user; sanity check.
     let asset_types = transactions
         .iter()
-        .map(|tx| vec![tx.output().0.inner(), tx.input().0.inner()])
-        .flatten()
+        .flat_map(|tx| vec![tx.output().0.inner(), tx.input().0.inner()])
         .collect::<HashSet<_>>();
     log::info!("Parsed following unique asset types: {:?}", asset_types);
 

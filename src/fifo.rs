@@ -103,11 +103,8 @@ impl InventoryItem {
     /// Can be either profit or loss.
     /// If the asset was not sold yet, return `None`.
     pub fn net_amount(&self) -> Option<Decimal> {
-        if let Some(sale_price) = self.sale_price {
-            Some(self.input_amount * (sale_price - self.cost_basis))
-        } else {
-            None
-        }
+        self.sale_price
+            .map(|sale_price| self.input_amount * (sale_price - self.cost_basis))
     }
 
     /// Income of the 'zero-cost' asset acquisition.
@@ -383,10 +380,7 @@ impl<'a, PP: PriceProvider> Ledger<'a, PP> {
         // TODO: provide a dedicated function to handle inner ledger manipulation.
         // This should be especially useful when finding an entry.
 
-        let entry = self
-            .ledger
-            .entry(output_token.clone())
-            .or_insert_with(Vec::new);
+        let entry = self.ledger.entry(output_token.clone()).or_default();
 
         // Create a new inventory item for the transaction.
         let item = InventoryItem {
@@ -396,7 +390,7 @@ impl<'a, PP: PriceProvider> Ledger<'a, PP> {
             input_type: input_token,
             input_amount,
             output_type: output_token,
-            output_amount: output_amount,
+            output_amount,
             remaining_amount: output_amount,
             cost_basis: transaction
                 .cost_basis()
@@ -499,7 +493,7 @@ impl<'a, PP: PriceProvider> Ledger<'a, PP> {
         // Add the new items to the ledger.
         self.ledger
             .entry(output_token.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .extend(new_items);
     }
 
@@ -510,7 +504,7 @@ impl<'a, PP: PriceProvider> Ledger<'a, PP> {
 
         self.ledger
             .entry(output_token.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(InventoryItem {
                 ordinal: transaction.ordinal(),
                 date: transaction.date(),
@@ -518,7 +512,7 @@ impl<'a, PP: PriceProvider> Ledger<'a, PP> {
                 input_type: AssetType::EUR(),
                 input_amount: Decimal::ZERO,
                 output_type: output_token.clone(),
-                output_amount: output_amount,
+                output_amount,
                 remaining_amount: output_amount,
                 cost_basis: self
                     .price_provider
