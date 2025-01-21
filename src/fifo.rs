@@ -125,10 +125,10 @@ impl InventoryItem {
         let date = self.date.format("%d.%m.%Y").to_string();
         let action = format!("{:?}", tx.tx_type());
 
-        let input_type = format!("{:?}", tx.input().0);
+        let input_type = format!("{}", tx.input().0);
         let input_amount = format!("{}", self.input_amount);
 
-        let output_type = format!("{:?}", tx.output().0);
+        let output_type = format!("{}", tx.output().0);
         let output_amount = format!("{}", self.output_amount);
 
         let net_amount = match (self.net_amount(), self.zero_cost_income()) {

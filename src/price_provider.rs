@@ -20,7 +20,7 @@ pub struct BasicPriceProvider {
 }
 
 impl BasicPriceProvider {
-    /// Create a new `BasicPriceProvider` from the given prices.
+    /// Create a new `BasicPriceProvider` from the configuration in the given file path.
     pub fn new(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let toml_content = std::fs::read_to_string(path)?;
         let prices: Prices = toml::from_str(&toml_content)?;

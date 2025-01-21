@@ -3,7 +3,7 @@ mod price_provider;
 mod validation;
 mod xlsx_parser;
 
-use fifo_types::{DataParser, MissingPricesCheck, OutputLine};
+use fifo_types::{MissingPricesCheck, OutputLine, TransactionsProvider};
 use price_provider::BasicPriceProvider;
 use xlsx_parser::{XlsxFileEntry, XlsxParser};
 
@@ -47,8 +47,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. Parse the XLSX files and validate the data.
     // NOTE: If user wants to have different data source, they should modify the line below with their own implementation.
-    let xlsx_parser = XlsxParser::new(config.entries);
-    let transactions = xlsx_parser.parse()?;
+    // The `XlsxParser` should be replaced with a custom type that implements the Iterator<Item = ParserDataType> trait.
+    let tx_provider: TransactionsProvider<_> = XlsxParser::new(config.entries).into();
+    let transactions = tx_provider.get()?;
     log::info!("Finished parsing all transactions.");
 
     let final_asset_state = validation::context_validation(&transactions)?;

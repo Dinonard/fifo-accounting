@@ -1,6 +1,7 @@
 use std::{
     fmt::{self, Display, Formatter},
     str::FromStr,
+    ops::Deref,
 };
 use serde::Deserialize;
 use chrono::NaiveDate;
@@ -110,6 +111,14 @@ impl FromStr for AssetType {
 
     fn from_str(input: &str) -> Result<AssetType, Self::Err> {
         Ok(AssetType(input.to_uppercase().trim().to_string()))
+    }
+}
+
+impl Deref for AssetType {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

@@ -4,7 +4,7 @@ mod parser;
 mod price_provider;
 
 pub use core::{TransactionType, AssetType, Transaction};
-pub use parser::DataParser;
+pub use parser::{DataParser, ParserDataType, TransactionsProvider};
 pub use price_provider::{PriceProvider, MissingPricesCheck};
 
 /// Contains data for a _single line_ in the output of the program.

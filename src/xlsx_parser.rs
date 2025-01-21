@@ -6,7 +6,7 @@ use chrono::NaiveDate;
 use serde::Deserialize;
 
 use crate::validation::parse_row;
-use fifo_types::{DataParser, Transaction};
+use fifo_types::{ParserDataType, Transaction};
 
 /// Specification for the XLSX file to parse.
 /// Defines path to the file, which sheet to read from, and from which row to start reading.
@@ -20,14 +20,15 @@ pub struct XlsxFileEntry {
     start_row: usize,
 }
 
-/// Implementation of the `DataParser` trait for parsing XLSX files.
+/// Implementation of the transaction provider for parsing XLSX files.
 pub struct XlsxParser {
     entries: Vec<XlsxFileEntry>,
+    index: usize,
 }
 
 impl XlsxParser {
     pub fn new(entries: Vec<XlsxFileEntry>) -> Self {
-        Self { entries }
+        Self { entries, index: 0 }
     }
 
     /// Parse the XLSX file and return the transactions from the specified sheet.
@@ -102,35 +103,24 @@ impl XlsxParser {
     }
 }
 
-impl DataParser for XlsxParser {
-    fn parse(&self) -> Result<Vec<Transaction>, Box<dyn std::error::Error>> {
-        let mut transactions = Vec::new();
+impl Iterator for XlsxParser {
+    type Item = ParserDataType;
 
-        // Parse each file and sheet, and append the transactions.
-        for entry in &self.entries {
-            transactions.append(&mut Self::parse_xlsx_file(entry)?);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.entries.len() {
+            let entry = &self.entries[self.index];
+            let result = Self::parse_xlsx_file(entry);
+            self.index += 1;
+
             log::debug!(
                 "Parsed transactions from file: {}, sheet: {}",
                 entry.file_path,
                 entry.sheet_name
             );
+
+            Some(result)
+        } else {
+            None
         }
-
-        // In case the files & sheets weren't provided in the correct order.
-        transactions.sort_by_key(|t| t.date());
-
-        // Update the ordinals.
-        let mut counter: u32 = 0;
-        transactions = transactions
-            .into_iter()
-            .map(|tx| {
-                counter += 1;
-                tx.new_with_ordinal(counter)
-            })
-            .collect();
-
-        log::debug!("Parsed a total of {} transactions.", transactions.len());
-
-        Ok(transactions)
     }
 }
