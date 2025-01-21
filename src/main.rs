@@ -3,7 +3,7 @@ mod price_provider;
 mod validation;
 mod xlsx_parser;
 
-use fifo_types::{MissingPricesCheck, OutputLine, TransactionsProvider};
+use fifo_types::{CsvHelper, MissingPricesCheck, TransactionsProvider};
 use price_provider::BasicPriceProvider;
 use xlsx_parser::{XlsxFileEntry, XlsxParser};
 
@@ -85,20 +85,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .for_each(|report| log::info!("{}", report));
 
     // 4. Generate the output CSV file.
+    let csv_helper = CsvHelper::new(config.csv_delimiter.clone());
     let lines = ledger
-        .output_lines()
-        .into_iter()
-        .map(|line| line.to_csv_line(config.csv_delimiter.clone()))
+        .csv_line_iter()
+        .map(|line| csv_helper.to_csv_line(line))
         .collect::<Vec<_>>();
 
     // Write the output to a file.
     std::fs::write(
         &cmd_args.fifo_output,
-        format!(
-            "{}\n{}",
-            OutputLine::csv_header(config.csv_delimiter),
-            lines.join("\n")
-        ),
+        format!("{}\n{}", csv_helper.csv_header(), lines.join("\n")),
     )
     .unwrap();
     log::info!("FIFO breakdown written to file: {}", cmd_args.fifo_output);

@@ -25,12 +25,14 @@
 //!
 //! The input amount of the original transaction & the output amount of the swap are fragmented in the same way.
 
-use fifo_types::{AssetType, OutputLine, PriceProvider, Transaction, TransactionType};
+use fifo_types::{AssetType, CsvLineData, PriceProvider, Transaction, TransactionType};
 
 use chrono::{Datelike, NaiveDate};
 use itertools::Itertools;
 use rust_decimal::Decimal;
 use std::{
+    borrow::Cow,
+    cell::OnceCell,
     collections::HashMap,
     fmt::{self, Display, Formatter},
 };
@@ -72,11 +74,6 @@ impl InventoryItem {
         self.is_zero_cost
     }
 
-    /// `true` if the asset was sold, `false` otherwise.
-    pub fn is_sell(&self) -> bool {
-        self.sale_price.is_some()
-    }
-
     /// `true` if the item is the first in the sequence, `false` otherwise.
     ///
     /// First item in the sequence is the one that resulted in first acquisition of the asset.
@@ -113,16 +110,66 @@ impl InventoryItem {
         }
     }
 
-    /// Create an `OutputLine` from the inventory item.
+    /// Provide `CsvLineData` for the item.
     ///
-    /// Vector of transactions used in processing must be provided. The order of transactions must be preserved.
-    pub fn output_line(&self, transactions: &Vec<Transaction>) -> OutputLine {
-        let tx = transactions
-            .get(self.ordinal as usize - 1)
-            .expect("Must exist since data was validated.");
+    /// Transaction corresponding to the item must be provided.
+    pub fn output_line(&self, tx: &Transaction) -> impl CsvLineData {
+        assert_eq!(self.ordinal, tx.ordinal(), "Ordinal mismatch");
+
+        #[derive(Debug)]
+        struct CsvLine {
+            ordinal: String,
+            transaction_date: String,
+            acquisition_date: String,
+            action: String,
+            input_type: String,
+            input_amount: String,
+            output_type: String,
+            output_amount: String,
+            net_amount: Option<String>,
+        }
+
+        impl CsvLineData for CsvLine {
+            fn ordinal(&self) -> Cow<str> {
+                Cow::Borrowed(&self.ordinal)
+            }
+
+            fn transaction_date(&self) -> Cow<str> {
+                Cow::Borrowed(&self.transaction_date)
+            }
+
+            fn acquisition_date(&self) -> Cow<str> {
+                Cow::Borrowed(&self.acquisition_date)
+            }
+
+            fn action(&self) -> Cow<str> {
+                Cow::Borrowed(&self.action)
+            }
+
+            fn input_type(&self) -> Cow<str> {
+                Cow::Borrowed(&self.input_type)
+            }
+
+            fn input_amount(&self) -> Cow<str> {
+                Cow::Borrowed(&self.input_amount)
+            }
+
+            fn output_type(&self) -> Cow<str> {
+                Cow::Borrowed(&self.output_type)
+            }
+
+            fn output_amount(&self) -> Cow<str> {
+                Cow::Borrowed(&self.output_amount)
+            }
+
+            fn net_amount(&self) -> Option<Cow<str>> {
+                self.net_amount.as_deref().map(Cow::Borrowed)
+            }
+        }
 
         let ordinal = format!("{}", self.ordinal);
-        let date = self.date.format("%d.%m.%Y").to_string();
+        let transaction_date = self.date.format("%d.%m.%Y").to_string();
+        let acquisition_date = self.acquisition_date.format("%d.%m.%Y").to_string();
         let action = format!("{:?}", tx.tx_type());
 
         let input_type = format!("{}", tx.input().0);
@@ -132,15 +179,16 @@ impl InventoryItem {
         let output_amount = format!("{}", self.output_amount);
 
         let net_amount = match (self.net_amount(), self.zero_cost_income()) {
-            (Some(net_amount), None) => format!("{}", net_amount),
-            (None, Some(income)) => format!("{}", income),
-            (None, None) => String::from(""),
+            (Some(net_amount), None) => Some(format!("{}", net_amount)),
+            (None, Some(income)) => Some(format!("{}", income)),
+            (None, None) => None,
             _ => panic!("Unexpected state for item: {:?}", self),
         };
 
-        OutputLine {
+        CsvLine {
             ordinal,
-            date,
+            transaction_date,
+            acquisition_date,
             action,
             input_type,
             input_amount,
@@ -193,22 +241,26 @@ impl Display for YearlyReport {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Ledger<PP: PriceProvider> {
+pub struct Ledger<'a, PP: PriceProvider> {
     /// List of all transactions, in order.
     transactions: Vec<Transaction>,
     /// Ledger of assets, used to keep track of the FIFO inventory.
     ledger: HashMap<AssetType, Vec<InventoryItem>>,
     /// Price provider used to fetch the price of assets.
     price_provider: PP,
+    /// Cache of the inventory items, sorted in order their respective transactions appear.
+    /// Used to avoid sorting the items multiple times.
+    in_order: OnceCell<Vec<&'a InventoryItem>>,
 }
 
-impl<PP: PriceProvider> Ledger<PP> {
+impl<'a, PP: PriceProvider> Ledger<'a, PP> {
     /// Create a new `Ledger` instance.
     pub fn new(transactions: Vec<Transaction>, price_provider: PP) -> Self {
         let mut ledger = Ledger {
             transactions: Vec::new(), // ugly, maybe improve later
             ledger: HashMap::new(),
             price_provider,
+            in_order: OnceCell::new(),
         };
 
         ledger.process(&transactions);
@@ -217,33 +269,31 @@ impl<PP: PriceProvider> Ledger<PP> {
         ledger
     }
 
-    /// Ledger of assets & transactions.
-    pub fn ledger(&self) -> &HashMap<AssetType, Vec<InventoryItem>> {
-        &self.ledger
-    }
-
-    /// Vector of output lines, sorted in order their respective transactions appear.
-    pub fn output_lines(&self) -> Vec<OutputLine> {
-        self.in_order()
-            .iter()
-            .map(|item| item.output_line(&self.transactions))
-            .collect()
-    }
-
     /// Vector of `InventoryItem` references, sorted in order their respective transactions appear.
-    pub fn in_order(&self) -> Vec<&InventoryItem> {
-        let mut items: Vec<_> = self
-            .ledger
-            .values()
-            .flat_map(|asset_items| asset_items.iter())
-            .collect();
+    pub fn in_order(&'a self) -> &'a Vec<&'a InventoryItem> {
+        self.in_order.get_or_init(|| {
+            let mut items: Vec<_> = self
+                .ledger
+                .values()
+                .flat_map(|asset_items| asset_items.iter())
+                .collect();
 
-        items.sort_by_key(|item| item.ordinal);
-        items
+            items.sort_by_key(|item| item.ordinal);
+            items
+        })
     }
 
-    // TODO
-    pub fn yearly_income_loss_report(&self) -> Vec<String> {
+    /// Iterator over the `CsvLineData` items, sorted in order.
+    /// Should be used to generate the output CSV file.
+    pub fn csv_line_iter(&'a self) -> impl Iterator<Item = impl CsvLineData + 'a> {
+        self.in_order().iter().map(|item| {
+            let tx = self.get_tx(item);
+            item.output_line(tx)
+        })
+    }
+
+    /// Yearly income & loss report.
+    pub fn yearly_income_loss_report(&'a self) -> Vec<String> {
         let mut total_report = HashMap::<Year, YearlyReport>::new();
 
         for item in self.in_order() {
@@ -272,6 +322,10 @@ impl<PP: PriceProvider> Ledger<PP> {
             .collect()
     }
 
+    /// Get the transaction corresponding to the inventory item.
+    ///
+    /// The assumption is that inventory item is **valid**, i.e. that its ordinal matches
+    /// an existing transaction.
     fn get_tx(&self, item: &InventoryItem) -> &Transaction {
         self.transactions
             .get(item.ordinal as usize - 1)
