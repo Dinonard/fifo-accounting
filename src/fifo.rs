@@ -99,12 +99,34 @@ impl InventoryItem {
         self.cost_basis
     }
 
-    /// Net amount from the sale of the asset.
-    /// Can be either profit or loss.
-    /// If the asset was not sold yet, return `None`.
-    pub fn net_amount(&self) -> Option<Decimal> {
+    /// Income of the transaction.
+    /// Equals the amount received in fiat (EUR).
+    pub fn income(&self) -> Option<Decimal> {
+        match (self.sale_price, self.zero_cost_income()) {
+            (Some(sale_price), None) => Some(self.input_amount * sale_price),
+            (None, Some(income)) => Some(income),
+            _ => None,
+        }
+    }
+
+    /// Expanse of the transaction.
+    /// Equals the outflow of the value tied to the asset.
+    pub fn expense(&self) -> Option<Decimal> {
         self.sale_price
-            .map(|sale_price| self.input_amount * (sale_price - self.cost_basis))
+            .map(|_sale_price| self.input_amount * self.cost_basis)
+    }
+
+    /// Profit of the transaction.
+    /// If the asset was not sold yet, return `None`.
+    pub fn profit(&self) -> Option<Decimal> {
+        if let Some(zero_cost_income) = self.zero_cost_income() {
+            Some(zero_cost_income)
+        } else {
+            match (self.income(), self.expense()) {
+                (Some(income), Some(expense)) => Some(income - expense),
+                _ => None,
+            }
+        }
     }
 
     /// Income of the 'zero-cost' asset acquisition.
@@ -135,7 +157,9 @@ impl InventoryItem {
             input_amount: String,
             output_type: String,
             output_amount: String,
-            net_amount: Option<String>,
+            income_amount: Option<String>,
+            expense_amount: Option<String>,
+            profit: Option<String>,
         }
 
         impl CsvLineData for CsvLine {
@@ -171,8 +195,16 @@ impl InventoryItem {
                 Cow::Borrowed(&self.output_amount)
             }
 
-            fn net_amount(&self) -> Option<Cow<str>> {
-                self.net_amount.as_deref().map(Cow::Borrowed)
+            fn income_amount(&self) -> Option<Cow<str>> {
+                self.income_amount.as_deref().map(Cow::Borrowed)
+            }
+
+            fn expense_amount(&self) -> Option<Cow<str>> {
+                self.expense_amount.as_deref().map(Cow::Borrowed)
+            }
+
+            fn profit(&self) -> Option<Cow<str>> {
+                self.profit.as_deref().map(Cow::Borrowed)
             }
         }
 
@@ -187,11 +219,19 @@ impl InventoryItem {
         let output_type = format!("{}", tx.output().0);
         let output_amount = format!("{}", self.output_amount);
 
-        let net_amount = match (self.net_amount(), self.zero_cost_income()) {
-            (Some(net_amount), None) => Some(format!("{}", net_amount)),
-            (None, Some(income)) => Some(format!("{}", income)),
-            (None, None) => None,
-            _ => panic!("Unexpected state for item: {:?}", self),
+        let income_amount = match self.income() {
+            Some(income) => Some(format!("{}", income)),
+            None => None,
+        };
+
+        let expense_amount = match self.expense() {
+            Some(expense) => Some(format!("{}", expense)),
+            None => None,
+        };
+
+        let profit = match self.profit() {
+            Some(profit) => Some(format!("{}", profit)),
+            None => None,
         };
 
         CsvLine {
@@ -203,7 +243,9 @@ impl InventoryItem {
             input_amount,
             output_type,
             output_amount,
-            net_amount,
+            income_amount,
+            expense_amount,
+            profit,
         }
     }
 }
@@ -215,27 +257,34 @@ type Year = i32;
 struct YearlyReport {
     /// Year for which the report is generated.
     year: Year,
-    /// Total income from selling any assets.
+    /// Total income incurred by selling of assets.
     income: Decimal,
-    /// Total loss from selling any assets.
-    loss: Decimal,
+    /// Total expense incurred by selling of assets.
+    expense: Decimal,
+    /// Total profit for selling all assets
+    profit: Decimal,
 }
 
 impl YearlyReport {
-    /// Include net result amount in the report.
-    /// Covers both income and loss.
-    fn include_net_result(&mut self, amount: Decimal) {
-        if amount.is_sign_positive() {
-            self.income = self
-                .income
-                .checked_add(amount)
-                .expect("Unexpected overflow.");
-        } else {
-            self.loss = self
-                .loss
-                .checked_add(amount)
-                .expect("Unexpected underflow.");
-        }
+    fn add_income(&mut self, amount: Decimal) {
+        self.income = self
+            .income
+            .checked_add(amount)
+            .expect("Unexpected overflow.");
+    }
+
+    fn add_expense(&mut self, amount: Decimal) {
+        self.expense = self
+            .expense
+            .checked_add(amount)
+            .expect("Unexpected overflow.");
+    }
+
+    fn add_profit(&mut self, amount: Decimal) {
+        self.profit = self
+            .profit
+            .checked_add(amount)
+            .expect("Unexpected overflow.");
     }
 }
 
@@ -243,8 +292,8 @@ impl Display for YearlyReport {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
-            "Year {}: Total Income: {:.2}; Total Loss: {:.2}",
-            self.year, self.income, self.loss,
+            "Year {}: Income: {:.2}; Expense: {:.2}, Profit: {:.2}",
+            self.year, self.income, self.expense, self.profit,
         )
     }
 }
@@ -310,17 +359,29 @@ impl<'a, PP: PriceProvider> Ledger<'a, PP> {
             let report = total_report.entry(year).or_insert_with(|| YearlyReport {
                 year,
                 income: Decimal::ZERO,
-                loss: Decimal::ZERO,
+                expense: Decimal::ZERO,
+                profit: Decimal::ZERO,
             });
 
-            // In case item represents a selling action, include the net amount.
-            if let Some(net_amount) = item.net_amount() {
-                report.include_net_result(net_amount);
+            // If income from asset selling exists, add it to the report.
+            if let Some(income) = item.income() {
+                report.add_income(income);
             }
 
-            // In case item is zero-cost, include it as pure income.
+            // If expense from asset selling exists, add it to the report.
+            if let Some(expense) = item.expense() {
+                report.add_expense(expense);
+            }
+
+            // If profit from asset selling exists, add it to the report.
+            if let Some(profit) = item.profit() {
+                report.add_profit(profit);
+            }
+
+            // If transaction is zero-cost, add it to the report as income.
             if let Some(income) = item.zero_cost_income() {
-                report.include_net_result(income);
+                report.add_income(income);
+                report.add_profit(income);
             }
         }
 

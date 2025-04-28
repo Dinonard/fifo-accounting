@@ -40,9 +40,17 @@ pub trait CsvLineData {
     /// Amount of asset received as output in the transaction.
     fn output_amount(&self) -> Cow<str>;
 
-    /// Net amount of asset received in the transaction.
+    /// Income amount.
     /// `None` if the transaction doesn't exchange asset for fiat.
-    fn net_amount(&self) -> Option<Cow<str>>;
+    fn income_amount(&self) -> Option<Cow<str>>;
+
+    /// Expense amount.
+    /// `None` if the transaction doesn't exchange asset for fiat.
+    fn expense_amount(&self) -> Option<Cow<str>>;
+
+    /// Profit amount.
+    /// `None` if the transaction doesn't exchange asset for fiat.
+    fn profit(&self) -> Option<Cow<str>>;
 }
 
 /// Helper for writing data to the CSV file.
@@ -54,7 +62,7 @@ pub struct CsvHelper<T: CsvLineData> {
 }
 
 impl <T: CsvLineData> CsvHelper<T> {
-    const HEADER_ELEMENTS: [&'static str; 9] = [
+    const HEADER_ELEMENTS: [&'static str; 11] = [
         "Ordinal",
         "Transaction Date",
         "Acquisition Date",
@@ -63,7 +71,9 @@ impl <T: CsvLineData> CsvHelper<T> {
         "Input Amount",
         "Output Type",
         "Output Amount",
-        "Net Amount",
+        "Income Amount",
+        "Expense Amount",
+        "Profit",
     ];
 
     /// Create a new `CsvHelper` instance.
@@ -100,7 +110,9 @@ impl <T: CsvLineData> CsvHelper<T> {
             data.input_amount().into_owned(),
             data.output_type().into_owned(),
             data.output_amount().into_owned(),
-            data.net_amount().map(|x| x.into_owned()).unwrap_or_default(),
+            data.income_amount().map(|x| x.into_owned()).unwrap_or_default(),
+            data.expense_amount().map(|x| x.into_owned()).unwrap_or_default(),
+            data.profit().map(|x| x.into_owned()).unwrap_or_default(),
         ]
     }
 
