@@ -59,3 +59,18 @@ date = "31-Dec-2024"
 token = "ADA"
 price = 0.8264
 date = "31-Dec-2024"
+
+[[price]]
+token = "ASTR"
+price = 0.01
+date = "07-Apr-2025"
+
+[[price]]
+token = "SDN"
+price = 0.01
+date = "08-Apr-2025"
+
+[[price]]
+token = "ASTR"
+price = 0.01
+date = "09-Jun-2025"

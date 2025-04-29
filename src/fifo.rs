@@ -102,11 +102,8 @@ impl InventoryItem {
     /// Income of the transaction.
     /// Equals the amount received in fiat (EUR).
     pub fn income(&self) -> Option<Decimal> {
-        match (self.sale_price, self.zero_cost_income()) {
-            (Some(sale_price), None) => Some(self.input_amount * sale_price),
-            (None, Some(income)) => Some(income),
-            _ => None,
-        }
+        self.sale_price
+            .map(|sale_price| sale_price * self.input_amount)
     }
 
     /// Expanse of the transaction.
@@ -219,9 +216,11 @@ impl InventoryItem {
         let output_type = format!("{}", tx.output().0);
         let output_amount = format!("{}", self.output_amount);
 
-        let income_amount = match self.income() {
-            Some(income) => Some(format!("{}", income)),
-            None => None,
+        let income_amount = match (self.income(), self.zero_cost_income()) {
+            (Some(income), None) => Some(format!("{}", income)),
+            (None, Some(zero_cost_income)) => Some(format!("{}", zero_cost_income)),
+            (None, None) => None,
+            (Some(_), Some(_)) => panic!("Must never happen"),
         };
 
         let expense_amount = match self.expense() {
@@ -258,17 +257,24 @@ struct YearlyReport {
     /// Year for which the report is generated.
     year: Year,
     /// Total income incurred by selling of assets.
-    income: Decimal,
+    sell_income: Decimal,
+    /// Total income incurred by interest.
+    interest_income: Decimal,
     /// Total expense incurred by selling of assets.
     expense: Decimal,
-    /// Total profit for selling all assets
-    profit: Decimal,
 }
 
 impl YearlyReport {
-    fn add_income(&mut self, amount: Decimal) {
-        self.income = self
-            .income
+    fn add_sell_income(&mut self, amount: Decimal) {
+        self.sell_income = self
+            .sell_income
+            .checked_add(amount)
+            .expect("Unexpected overflow.");
+    }
+
+    fn add_interest_income(&mut self, amount: Decimal) {
+        self.interest_income = self
+            .interest_income
             .checked_add(amount)
             .expect("Unexpected overflow.");
     }
@@ -279,21 +285,21 @@ impl YearlyReport {
             .checked_add(amount)
             .expect("Unexpected overflow.");
     }
-
-    fn add_profit(&mut self, amount: Decimal) {
-        self.profit = self
-            .profit
-            .checked_add(amount)
-            .expect("Unexpected overflow.");
-    }
 }
 
 impl Display for YearlyReport {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let profit = self
+            .sell_income
+            .checked_add(self.interest_income)
+            .expect("Mustn't overflow")
+            .checked_sub(self.expense)
+            .expect("Mustn't underflow");
+
         write!(
             f,
-            "Year {}: Income: {:.2}; Expense: {:.2}, Profit: {:.2}",
-            self.year, self.income, self.expense, self.profit,
+            "Year {}: Sell Income: {:.2}, Interest Income: {:.2}, Expense: {:.2}, Profit: {:.2}",
+            self.year, self.sell_income, self.interest_income, self.expense, profit,
         )
     }
 }
@@ -358,24 +364,23 @@ impl<'a, PP: PriceProvider> Ledger<'a, PP> {
             let year = item.date.year();
             let report = total_report.entry(year).or_insert_with(|| YearlyReport {
                 year,
-                income: Decimal::ZERO,
+                sell_income: Decimal::ZERO,
+                interest_income: Decimal::ZERO,
                 expense: Decimal::ZERO,
-                profit: Decimal::ZERO,
             });
 
             // If income from asset selling exists, add it to the report.
             if let Some(income) = item.income() {
-                report.add_income(income);
+                report.add_sell_income(income);
+            }
+
+            if let Some(zero_cost_income) = item.zero_cost_income() {
+                report.add_interest_income(zero_cost_income);
             }
 
             // If expense from asset selling exists, add it to the report.
             if let Some(expense) = item.expense() {
                 report.add_expense(expense);
-            }
-
-            // If profit from asset selling exists, add it to the report.
-            if let Some(profit) = item.profit() {
-                report.add_profit(profit);
             }
         }
 

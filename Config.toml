@@ -18,4 +18,9 @@ start_row = 1
 [[entries]]
 file_path = "balances.xlsx"
 sheet_name = "2024"
+start_row = 15
+
+[[entries]]
+file_path = "balances.xlsx"
+sheet_name = "2025"
 start_row = 16
