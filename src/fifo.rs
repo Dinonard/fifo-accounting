@@ -377,12 +377,6 @@ impl<'a, PP: PriceProvider> Ledger<'a, PP> {
             if let Some(profit) = item.profit() {
                 report.add_profit(profit);
             }
-
-            // If transaction is zero-cost, add it to the report as income.
-            if let Some(income) = item.zero_cost_income() {
-                report.add_income(income);
-                report.add_profit(income);
-            }
         }
 
         total_report
