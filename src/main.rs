@@ -11,12 +11,10 @@
 // limitations under the License.
 
 mod fifo;
-mod price_provider;
 mod validation;
 mod xlsx_parser;
 
-use fifo_types::{CsvHelper, MissingPricesCheck, TransactionsProvider};
-use price_provider::BasicPriceProvider;
+use fifo_types::{CsvHelper, TransactionsProvider};
 use xlsx_parser::{XlsxFileEntry, XlsxParser};
 
 use clap::Parser;
@@ -75,19 +73,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect::<HashSet<_>>();
     log::info!("Parsed following unique asset types: {:?}", asset_types);
 
-    // 2. Read the prices from the file.
-    let price_provider = BasicPriceProvider::new(&config.price_file)?;
-    let missing_prices = price_provider.missing_prices(&transactions);
-    if !missing_prices.is_empty() {
-        log::error!(
-            "Missing prices for the following transactions: {:#?}",
-            missing_prices
-        );
-        return Err("Missing prices for some transactions".into());
-    }
-
     // 3. Create the ledger & process the transactions in FIFO manner.
-    let ledger = fifo::Ledger::new(transactions, price_provider);
+    let ledger = fifo::Ledger::new(transactions);
 
     log::info!("Yearly income/loss reports:");
     ledger
@@ -118,8 +105,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 struct Config {
     /// Separator to use in the output CSV file.
     csv_delimiter: String,
-    /// Path to the file with the prices.
-    price_file: String,
     /// List of entries to parse.
     entries: Vec<XlsxFileEntry>,
 }

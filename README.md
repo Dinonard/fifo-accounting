@@ -28,9 +28,6 @@ start_row = 14
 Files & sheets can be provided in any order.
 The transactions must be sequential per file (monotonically increasing date), and it's not allowed to go into negative balance (e.g. user cannot have **-0.01 BTC** at any point).
 
-The `Prices.toml` file is used to provide program with token prices in **EUR**.
-If any price is missing for a specific date, the program will inform user about it and terminate.
-
 Check the binary options:
 
 ```bash
@@ -61,7 +58,7 @@ Where:
 
 * `Ordinal` is a simple ordinal number, e.g. **1**, **2**, **3**.
 * `Date` is a date in the format on which the transaction happened. E.g. **12-Dec-2024**. Various formats are supported.
-* `Transaction Type` is the type of the transaction. E.g. **Buy**, **Sell**, **Transfer**, etc.
+* `Transaction Type` is the type of the transaction. E.g. **Buy**, **Sell**, etc.
 * `Input Token` is the name (string) of the input type for the transaction. E.g. **BTC**.
 * `Input Amount` is the amount of the input token. E.g. **0.14345**.
 * `Output Token` is the name (string) of the output type for the transaction. E.g. **EUR**.

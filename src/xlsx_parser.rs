@@ -61,7 +61,6 @@ impl XlsxParser {
                 .split('/')
                 .last()
                 .expect("File was opened hence it should have a name");
-            let context_message = format!("File: '{}', Sheet: '{}'", file_name, row_number);
 
             let mut transactions = Vec::new();
 
@@ -72,7 +71,14 @@ impl XlsxParser {
                     break;
                 }
 
-                transactions.push(parse_row(row).map_err(|message| {
+                let context_message = format!(
+                    "File: '{}', Sheet: '{}, Row: {}'",
+                    file_name,
+                    sheet_name,
+                    row_number + 1
+                );
+
+                transactions.push(parse_row(row, &context_message).map_err(|message| {
                     format!(
                         "{}: Row {:?}, number {}, has invalid data - please check! Error: {}",
                         context_message, row, row_number, message,
@@ -140,11 +146,12 @@ impl Iterator for XlsxParser {
 ///
 /// # Arguments
 /// * `row` - A row of data. Should be in the appropriate format.
+/// * `extra_info` - Extra info to attach to the transaction (e.g. filename, sheet, row).
 ///
 /// # Returns
 /// * `Transaction` - If the row is valid, return the parsed transaction.
 /// * `String` - If the row is invalid, return an error message.
-fn parse_row(row: &[Data]) -> Result<Transaction, String> {
+fn parse_row(row: &[Data], extra_info: &str) -> Result<Transaction, String> {
     if row.len() < 8 {
         return Err(format!("Row is too short, skipping: {:?}", row));
     }
@@ -254,5 +261,6 @@ fn parse_row(row: &[Data]) -> Result<Transaction, String> {
         output_token,
         output_amount,
         note.to_string(),
+        extra_info.to_string(),
     ))
 }

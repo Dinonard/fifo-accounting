@@ -28,7 +28,8 @@
 //!    a) In case the output amount equals that of the swap, consume it entirely.
 //!    b) In case the output amount is greater than that of the swap, consume only the amount of the swap, leaving the rest for future swaps.
 //!    c) In case the output amount is less than that of the swap, consume the entire output amount and continue looking for the next transaction.
-//!       Repeat the process until the swap is satisfied.
+//!
+//! Repeat the process until the swap is satisfied.
 //!
 //! Each 'consumption' of the transaction is recoded as fragmentation.
 //! For example, if a transaction has an output of 100 units, and a swap consumes 70 units, the transaction is fragmented into two parts:
@@ -37,7 +38,7 @@
 //!
 //! The input amount of the original transaction & the output amount of the swap are fragmented in the same way.
 
-use fifo_types::{AssetType, CsvLineData, PriceProvider, Transaction, TransactionType};
+use fifo_types::{AssetType, CsvLineData, Transaction, TransactionType};
 
 use chrono::{Datelike, NaiveDate};
 use itertools::Itertools;
@@ -305,25 +306,22 @@ impl Display for YearlyReport {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Ledger<'a, PP: PriceProvider> {
+pub struct Ledger<'a> {
     /// List of all transactions, in order.
     transactions: Vec<Transaction>,
     /// Ledger of assets, used to keep track of the FIFO inventory.
     ledger: HashMap<AssetType, Vec<InventoryItem>>,
-    /// Price provider used to fetch the price of assets.
-    price_provider: PP,
     /// Cache of the inventory items, sorted in order their respective transactions appear.
     /// Used to avoid sorting the items multiple times.
     in_order: OnceCell<Vec<&'a InventoryItem>>,
 }
 
-impl<'a, PP: PriceProvider> Ledger<'a, PP> {
+impl<'a> Ledger<'a> {
     /// Create a new `Ledger` instance.
-    pub fn new(transactions: Vec<Transaction>, price_provider: PP) -> Self {
+    pub fn new(transactions: Vec<Transaction>) -> Self {
         let mut ledger = Ledger {
             transactions: Vec::new(), // ugly, maybe improve later
             ledger: HashMap::new(),
-            price_provider,
             in_order: OnceCell::new(),
         };
 
@@ -426,7 +424,7 @@ impl<'a, PP: PriceProvider> Ledger<'a, PP> {
             TransactionType::Interest | TransactionType::Airdrop => {
                 self.process_interest(transaction);
             }
-            TransactionType::Transfer | TransactionType::Bridge => {
+            TransactionType::Bridge => {
                 self.process_transfer(transaction);
             }
         }
@@ -574,17 +572,16 @@ impl<'a, PP: PriceProvider> Ledger<'a, PP> {
                 output_type: output_token.clone(),
                 output_amount,
                 remaining_amount: output_amount,
-                cost_basis: self
-                    .price_provider
-                    .get_price(output_token, transaction.date())
-                    .expect("Must exist"),
+                cost_basis: transaction
+                    .cost_basis()
+                    .expect("Must be validated earlier."),
                 sale_price: None,
                 parent_tx: None,
                 is_zero_cost: true,
             });
     }
 
-    // TODO: rethink how this is handled, this seems hacky.
+    // TODO: Remove `Bridge` and just treat it as sell. Need to update docs.
     fn process_transfer(&mut self, transaction: &Transaction) {
         let (input_type, input_amount) = transaction.input();
         let (output_type, output_amount) = transaction.output();
@@ -599,6 +596,7 @@ impl<'a, PP: PriceProvider> Ledger<'a, PP> {
                 AssetType::EUR(),
                 Decimal::ZERO,
                 transaction.note().to_string(),
+                transaction.extra_info().to_string(),
             );
 
             self.process_selling_or_swap(&dummy_tx);

@@ -36,8 +36,6 @@ pub enum TransactionType {
     Bridge,
     /// Non-fungible token was bought or sold.
     Nft,
-    /// Asset was transferred between two wallets or CEXes, resulting in some tangible loss.
-    Transfer,
     /// Asset was received as part of an airdrop.
     Airdrop,
     /// Asset was locked or unlocked in some protocol.
@@ -58,7 +56,6 @@ impl FromStr for TransactionType {
             "selling" => Ok(TransactionType::Selling),
             "bridge" => Ok(TransactionType::Bridge),
             "nft" => Ok(TransactionType::Nft),
-            "transfer" => Ok(TransactionType::Transfer),
             "airdrop" => Ok(TransactionType::Airdrop),
             "lock" => Ok(TransactionType::Lock),
             "fees" => Ok(TransactionType::Fees),
@@ -159,6 +156,9 @@ pub struct Transaction {
     output_amount: Decimal,
     /// Free text note about the transaction.
     note: String,
+    // TODO: Think of a more compact solution, this seems wasteful, allocating different strings for each transaction.
+    /// Transaction context, to help with error messages (e.g. filename, sheet, row).
+    extra_info: String,
 }
 
 impl Transaction {
@@ -172,6 +172,7 @@ impl Transaction {
         output_type: AssetType,
         output_amount: Decimal,
         note: String,
+        extra_info: String,
     ) -> Self {
         Transaction {
             ordinal,
@@ -182,6 +183,7 @@ impl Transaction {
             output_type,
             output_amount,
             note,
+            extra_info,
         }
     }
 
@@ -221,6 +223,13 @@ impl Transaction {
         &self.note
     }
 
+    /// Transaction context, to help with error messages (e.g. filename, sheet, row).
+    pub fn extra_info(&self) -> &str {
+        &self.extra_info
+    }
+
+    // TODO: Remove <Option> - if it's zero, treat it as zero cost basis? Validator should ensure this value makes sense.
+    // Also, we can use a trait for transactions which can satisfy this case.
     /// Cost basis of the transaction.
     /// This is the price at which the output token was acquired.
     /// E.g. if 1.5 BTC was bought for 750 USD, the cost basis is 500 USD.

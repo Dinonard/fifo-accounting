@@ -14,7 +14,7 @@ use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use std::collections::{hash_map::Entry, HashMap};
 
-use fifo_types::{AssetType, Transaction};
+use fifo_types::{AssetType, Transaction, TransactionType};
 
 /// Validate the transactions, and return the final state of the ledger.
 /// There are several checks performed:
@@ -42,7 +42,8 @@ pub fn context_validation(
         // 1. Validate the ordinal number.
         if tx.ordinal() != previous_ordinal + 1 {
             return Err(format!(
-                "Ordinal number mismatch: expected {}, found {}",
+                "Context: {}; Ordinal number mismatch: expected {}, found {}",
+                tx.extra_info(),
                 previous_ordinal + 1,
                 tx.ordinal()
             ));
@@ -52,7 +53,8 @@ pub fn context_validation(
         // 2. Validate the date.
         if tx.date() < previous_date {
             return Err(format!(
-                "Date mismatch: expected >= {:?}, found {:?}",
+                "Context {}; Date mismatch: expected >= {:?}, found {:?}",
+                tx.extra_info(),
                 previous_date,
                 tx.date()
             ));
@@ -63,6 +65,14 @@ pub fn context_validation(
         let (input_token, input_amount) = tx.input();
         let (output_token, output_amount) = tx.output();
 
+        if input_amount.is_zero() {
+            return Err(format!(
+                "Context: {}; Input amount is zero for transaction: {:?}",
+                tx.extra_info(),
+                tx
+            ));
+        }
+
         // 3.1. Subtract the input amount in case it's not fiat.
         if input_token.is_crypto() {
             match state.entry(input_token.clone()) {
@@ -70,11 +80,11 @@ pub fn context_validation(
                     let entry = entry.get_mut();
 
                     if let Some(new_value) = entry.checked_sub(input_amount) {
-                        // TODO: revise this later - tolerance should differ for different tokens
                         if new_value < Decimal::ZERO {
                             return Err(format!(
-                                "Negative balance of {} for {:?} after transaction: {:?}",
-                                new_value, input_token, tx
+                                "Context: {}; Negative balance of {} for {:?} after transaction: {:?}. State dump: {:?}",
+                                tx.extra_info(),
+                                new_value, input_token, tx, state
                             ));
                         }
 
@@ -82,15 +92,19 @@ pub fn context_validation(
                     } else {
                         // This part should never happen, since `Decimal` supports negative numbers.
                         return Err(format!(
-                            "Underflow for {:?} after transaction: {:?}",
-                            input_token, tx
+                            "Context: {}; Underflow for {:?} after transaction: {:?}",
+                            tx.extra_info(),
+                            input_token,
+                            tx
                         ));
                     }
                 }
                 Entry::Vacant(_) => {
                     return Err(format!(
-                        "Token {:?} not found in state for transaction: {:?}",
-                        input_token, tx
+                        "Context: {}; Token {:?} not found in state for transaction: {:?}",
+                        tx.extra_info(),
+                        input_token,
+                        tx
                     ));
                 }
             }
@@ -104,8 +118,10 @@ pub fn context_validation(
 
                     let new_value = entry.checked_add(output_amount).ok_or_else(|| {
                         format!(
-                            "Overflow for {:?} after transaction: {:?}",
-                            output_token, tx
+                            "Context: {}; Overflow for {:?} after transaction: {:?}.",
+                            tx.extra_info(),
+                            output_token,
+                            tx
                         )
                     })?;
 
@@ -121,14 +137,65 @@ pub fn context_validation(
         // Log this as a warning, but don't fail the validation.
         if output_token != AssetType::EUR() && output_token.is_fiat() {
             log::warn!(
-                "Selling for non-EUR fiat {:?} in transaction: {:?}. Take the EUR value instead at the transaction date.",
+                "Context: {}; Selling for non-EUR fiat {:?} in transaction: {:?}. Take the EUR value instead at the transaction date.",
+                tx.extra_info(),
                 output_token,
                 tx
             );
+        }
+
+        // 4. Specific tx type validation
+        match tx.tx_type() {
+            TransactionType::Interest => {
+                validate_interest_transaction(tx)?;
+            }
+            // TODO: Handle other tx types
+            _ => {}
         }
     }
 
     Ok(state)
 }
 
-// TODO: add validation for each transaction type - e.g. if it's "Buying", then input amount must be greater than zero, etc.
+/// Validate interest transaction specifics.
+fn validate_interest_transaction(tx: &Transaction) -> Result<(), String> {
+    let (input_token, input_amount) = tx.input();
+    let (output_token, output_amount) = tx.output();
+
+    assert!(tx.tx_type() == TransactionType::Interest, "Sanity check.");
+
+    if !input_token.is_fiat() {
+        return Err(format!(
+            "Context: {}; Interest transaction should have fiat input, found {:?} in transaction: {:?}",
+            tx.extra_info(),
+            input_token,
+            tx
+        ));
+    }
+
+    if input_amount.is_zero() {
+        return Err(format!(
+            "Context: {}; Interest transaction should have non-zero fiat input amount in transaction: {:?}",
+            tx.extra_info(),
+            tx
+        ));
+    }
+
+    if output_token.is_fiat() {
+        return Err(format!(
+            "Context: {}; Interest transaction does not support fiat output, found in transaction: {:?}",
+            tx.extra_info(),
+            tx
+        ));
+    }
+
+    if output_amount.is_zero() {
+        return Err(format!(
+            "Context: {}; Interest transaction should have non-zero output amount in transaction: {:?}",
+            tx.extra_info(),
+            tx
+        ));
+    }
+
+    Ok(())
+}

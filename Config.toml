@@ -8,8 +8,6 @@
 
 csv_delimiter = ";"
 
-price_file = "Prices.toml"
-
 [[entries]]
 file_path = "balances.xlsx"
 sheet_name = "2023"
@@ -23,4 +21,4 @@ start_row = 15
 [[entries]]
 file_path = "balances.xlsx"
 sheet_name = "2025"
-start_row = 16
+start_row = 12
