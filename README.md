@@ -52,7 +52,7 @@ cargo run -- -c Config.toml -f fifo_output.csv
 Expected format is:
 
 | Ordinal | Date | Transaction Type | Input Token | Input Amount | Output Token | Output Amount |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | --- | --- |
 
 Where:
 
