@@ -96,7 +96,7 @@ impl XlsxParser {
 
                 transactions.push(parse_row(row, &context_message).map_err(|message| {
                     format!(
-                        "{context_message}: Row {row:?}, number {row_number}, has invalid data - please check! Error: {message}",
+                        "{context_message}; row number: {row_number}, has invalid data - please check! Error: {message}",
                     )
                 })?);
 
@@ -104,7 +104,7 @@ impl XlsxParser {
                 if let Some(tx) = transactions.last() {
                     if tx.date() < previous_date {
                         return Err(format!(
-                            "{context_message}: Row {row:?}, number {row_number}, has a date that is not monotonically increasing - please check!",
+                            "{context_message}; row number: {row_number}, has a date that is not monotonically increasing - please check!",
                         ).into());
                     }
                     previous_date = tx.date();
@@ -166,29 +166,33 @@ impl Iterator for XlsxParser {
 /// * `String` - If the row is invalid, return an error message.
 fn parse_row(row: &[Data], extra_info: &str) -> Result<Transaction, String> {
     if row.len() < 8 {
-        return Err(format!("Row is too short, skipping: {row:?}"));
+        return Err(format!(
+            "Row is too short, expecting at least 8 columns, skipping: {row:?}"
+        ));
     }
 
     // Helper function to parse a float as a decimal
-    fn parse_decimal(data: &Data) -> Result<Decimal, String> {
+    fn parse_decimal(data: &Data, field: &str) -> Result<Decimal, String> {
         if let Data::Float(_) = data {
             Decimal::from_str(
                 &data
                     .as_string()
                     .expect("Float can be represented as string."),
             )
-            .map_err(|e| format!("Cannot convert float to Decimal: {e:?}"))
+            .map_err(|e| format!("Cannot parse {field}, failed converting float to Decimal: {e:?}"))
         } else {
-            Err(format!("Expected a decimal value, found: {data:?}"))
+            Err(format!(
+                "Expected a decimal value for {field}, found: {data:?}"
+            ))
         }
     }
 
     // Helper function to parse a string
-    fn parse_string(data: &Data) -> Result<&str, String> {
+    fn parse_string<'a>(data: &'a Data, field: &'a str) -> Result<&'a str, String> {
         if let Data::String(value) = data {
             Ok(value)
         } else {
-            Err(format!("Expected a string, found: {data:?}"))
+            Err(format!("Expected a string for {field}, found: {data:?}"))
         }
     }
 
@@ -225,25 +229,18 @@ fn parse_row(row: &[Data], extra_info: &str) -> Result<Transaction, String> {
     };
 
     // 4. Parse the input token.
-    let input_token = AssetType::from_str(parse_string(&row[3])?)
+    let input_token = AssetType::from_str(parse_string(&row[3], "input token")?)
         .map_err(|_| format!("Fourth column must be a valid asset type, skipping: {row:?}",))?;
 
     // 5. Parse the input amount.
-    let input_amount = parse_decimal(&row[4])?;
+    let input_amount = parse_decimal(&row[4], "input amount")?;
 
     // 6. Parse the output token.
-    let output_token = AssetType::from_str(parse_string(&row[5])?)
+    let output_token = AssetType::from_str(parse_string(&row[5], "output token")?)
         .map_err(|_| format!("Fifth column must be a valid asset type, skipping: {row:?}"))?;
 
     // 7. Parse the output amount.
-    let output_amount = parse_decimal(&row[6])?;
-
-    // 8. Parse the extra info, if present. Not important.
-    let _maybe_extra_info = if let Some(Data::String(value)) = row.get(8) {
-        Some(value)
-    } else {
-        None
-    };
+    let output_amount = parse_decimal(&row[6], "output amount")?;
 
     Ok(Transaction::new(
         ordinal,
