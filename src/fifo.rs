@@ -38,7 +38,7 @@
 //!
 //! The input amount of the original transaction & the output amount of the swap are fragmented in the same way.
 
-use fifo_types::{AssetType, CsvLineData, Transaction, TransactionType};
+use types::{AssetType, CsvLineData, Transaction, TransactionType};
 
 use chrono::{Datelike, NaiveDate};
 use itertools::Itertools;

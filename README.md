@@ -83,7 +83,7 @@ To do so, user should only implement the following iterator trait like:
 
 ```Rust
 
-use fifo_types::{ParserDataType, Transaction};
+use types::{ParserDataType, Transaction};
 
 pub struct CustomParser;
 

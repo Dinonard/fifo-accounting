@@ -14,7 +14,7 @@ use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use std::collections::{hash_map::Entry, HashMap};
 
-use fifo_types::{AssetType, Transaction, TransactionType};
+use types::{AssetType, Transaction, TransactionType};
 
 /// Validate the transactions, and return the final state of the ledger.
 /// There are several checks performed:

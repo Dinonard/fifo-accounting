@@ -14,7 +14,7 @@ mod fifo;
 mod validation;
 mod xlsx_parser;
 
-use fifo_types::{CsvHelper, TransactionsProvider};
+use types::{CsvHelper, TransactionsProvider};
 use xlsx_parser::{XlsxFileEntry, XlsxParser};
 
 use clap::Parser;

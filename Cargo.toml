@@ -7,7 +7,7 @@ license = "Apache-2.0"
 [dependencies]
 
 # Local dependencies
-fifo-types = { path = "./src/fifo-types" }
+types = { path = "./src/types" }
 
 # External dependencies
 calamine = { version = "0.26.1", features = ["dates"] }

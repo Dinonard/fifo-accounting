@@ -16,7 +16,7 @@ use rust_decimal::Decimal;
 use serde::Deserialize;
 use std::str::FromStr;
 
-use fifo_types::{AssetType, ParserDataType, Transaction, TransactionType};
+use types::{AssetType, ParserDataType, Transaction, TransactionType};
 
 /// Specification for the XLSX file to parse.
 /// Defines path to the file, which sheet to read from, and from which row to start reading.
