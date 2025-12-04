@@ -51,7 +51,7 @@ cargo run -- -c Config.toml -f fifo_output.csv
 
 Expected format is:
 
-| Ordinal | Date | Transaction Type | Input Token | Input Amount | Output Token | Output Amount | Note | Additional Info |
+| Ordinal | Date | Transaction Type | Input Token | Input Amount | Output Token | Output Amount |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 Where:
@@ -63,17 +63,13 @@ Where:
 * `Input Amount` is the amount of the input token. E.g. **0.14345**.
 * `Output Token` is the name (string) of the output type for the transaction. E.g. **EUR**.
 * `Output Amount` is the amount of the output token. E.g. **1000.23**.
-* `Note` is a note for the transaction. E.g. **DEX Swap**. It's free form text, irrelevant for this program.
-* `Additional Info` is additional free form text, used to provide more extensive information about the transaction. E.g. link to the transaction on the block explorer.
-
-For the list of valid `Transaction Types`, please refer to the code.
 
 One example of a transaction:
 
-| Ordinal | Date | Transaction Type | Input Token | Input Amount | Output Token | Output Amount | Note | Additional Info |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 12-Dec-2024 | Swap | ASTR | 10000 | USDT | 644.345 | DEX Swap | _link to the transaction on block explorer_ |
-| 2 | 12-Dec-2024 | Swap | BTC | 1 | ETH | 25 | Binance |  |
+| Ordinal | Date | Transaction Type | Input Token | Input Amount | Output Token | Output Amount |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 12-Dec-2024 | Swap | ASTR | 10000 | USDT | 644.345 |
+| 2 | 12-Dec-2024 | Swap | BTC | 1 | ETH | 25 |
 
 ## Custom Data Parser
 
@@ -101,3 +97,30 @@ let tx_provider: TransactionProvider<_> = CustomParser::new(...).into();
 ```
 
 Rest of the pipeline remains the same and can be reused.
+
+## Transaction Types
+
+There are two main transaction types supported:
+
+### Crypto Inflow
+
+* covers buying crypto with fiat currency, receiving interest, airdrops, etc.
+* 3 distinct types are supported - `Buying`, `Interest`, `Invoice`
+* buy & invoice are treated basically the same, _invoice_ is only used as a type for easier visibility in the input document
+* interest is treated separately, and is counted as separate income event
+* input currency must be fiat & amount non-zero
+* output currency must be crypto & amount non-zero
+
+### Crypto Mutation
+
+* covers selling crypto for fiat currency, and exchanging it for other crypto
+* 2 distinct types are supported - `Swap` & `Selling`
+* swap requires that non-zero & non-fiat input is exchanged for non-zero & non-fiat output
+* selling requires that non-zero & non-fiat input is exchanged for fiat output which can be zero
+* selling should be used to cover both _exchange_ for fiat, as well as losses due to fees (hence the output can be zero)
+
+## Note
+
+It is important to note that all fiat amounts **MUST** be expressed in EUR currency.
+The program does not support performing conversion, since it requires different exchange rates for different dates.
+It is up to the user to ensure that the input data is properly pre-processed to have all fiat amounts in EUR.
