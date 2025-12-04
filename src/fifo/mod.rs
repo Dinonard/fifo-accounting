@@ -270,6 +270,8 @@ pub struct Ledger<'a> {
     transactions: Vec<Transaction>,
     /// Ledger of assets, used to keep track of the FIFO inventory.
     ledger: HashMap<AssetType, Vec<InventoryItem>>,
+    /// Next index for each asset type, used to skip over the already consumed items in the ledger.
+    next_idx: HashMap<AssetType, usize>,
     /// Cache of the inventory items, sorted in order their respective transactions appear.
     /// Used to avoid sorting the items multiple times.
     in_order: OnceCell<Vec<&'a InventoryItem>>,
@@ -281,6 +283,7 @@ impl<'a> Ledger<'a> {
         let mut ledger = Ledger {
             transactions: Vec::new(), // ugly, maybe improve later
             ledger: HashMap::new(),
+            next_idx: HashMap::new(),
             in_order: OnceCell::new(),
         };
 
@@ -411,6 +414,7 @@ impl<'a> Ledger<'a> {
         let (input_token, input_amount) = transaction.input();
         let (output_token, output_amount) = transaction.output();
 
+        let start_idx = *self.next_idx.get(&input_token).unwrap_or(&0);
         let inventory = self
             .ledger
             .get_mut(&input_token)
@@ -420,12 +424,7 @@ impl<'a> Ledger<'a> {
 
         let mut new_items = Vec::new();
 
-        // TODO: need a more efficient way to start iteration. Use a dedicated function to provide an iterator.
-        // There should be an 'last known index' to start from, to avoid iterating from the beginning.
-        for item in inventory
-            .iter_mut()
-            .filter(|item| item.remaining_amount > Decimal::ZERO)
-        {
+        for (offset, item) in inventory.iter_mut().skip(start_idx).enumerate() {
             if remaining_input_amount.is_zero() {
                 break;
             }
@@ -479,6 +478,12 @@ impl<'a> Ledger<'a> {
             };
 
             new_items.push(new_item);
+
+            // Update the next index to skip over fully consumed items.
+            if item.remaining_amount.is_zero() {
+                self.next_idx
+                    .insert(input_token.clone(), start_idx + offset + 1);
+            }
         }
 
         if !remaining_input_amount.is_zero() {
