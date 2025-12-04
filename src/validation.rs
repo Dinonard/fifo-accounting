@@ -133,24 +133,23 @@ pub fn context_validation(
             }
         }
 
-        // Selling for fiat, but not EUR.
-        // Log this as a warning, but don't fail the validation.
-        if output_token != AssetType::EUR() && output_token.is_fiat() {
-            log::warn!(
-                "Context: {}; Selling for non-EUR fiat {:?} in transaction: {:?}. Take the EUR value instead at the transaction date.",
-                tx.extra_info(),
-                output_token,
-                tx
-            );
-        }
-
         // 4. Specific tx type validation
         match tx.tx_type() {
             TransactionType::Interest => {
                 validate_interest_transaction(tx)?;
             }
-            // TODO: Handle other tx types
-            _ => {}
+            TransactionType::Invoice => {
+                validate_invoice_transaction(tx)?;
+            }
+            TransactionType::Swap => {
+                validate_swap_transaction(tx)?;
+            }
+            TransactionType::Buying => {
+                validate_buy_transaction(tx)?;
+            }
+            TransactionType::Selling => {
+                validate_selling_transaction(tx)?;
+            }
         }
     }
 
@@ -162,11 +161,9 @@ fn validate_interest_transaction(tx: &Transaction) -> Result<(), String> {
     let (input_token, input_amount) = tx.input();
     let (output_token, output_amount) = tx.output();
 
-    assert!(tx.tx_type() == TransactionType::Interest, "Sanity check.");
-
     if !input_token.is_fiat() {
         return Err(format!(
-            "Context: {}; Interest transaction should have fiat input, found {:?} in transaction: {:?}",
+            "Context: {}; Interest transaction should have fiat (EUR) input, found {:?} in transaction: {:?}",
             tx.extra_info(),
             input_token,
             tx
@@ -196,6 +193,172 @@ fn validate_interest_transaction(tx: &Transaction) -> Result<(), String> {
             tx
         ));
     }
+
+    Ok(())
+}
+
+fn validate_invoice_transaction(tx: &Transaction) -> Result<(), String> {
+    let (input_token, input_amount) = tx.input();
+    let (output_token, output_amount) = tx.output();
+
+    if !input_token.is_fiat() {
+        return Err(format!(
+            "Context: {}; Invoice transaction should have fiat (EUR) input, found {:?} in transaction: {:?}",
+            tx.extra_info(),
+            input_token,
+            tx
+        ));
+    }
+
+    if input_amount.is_zero() {
+        return Err(format!(
+            "Context: {}; Invoice transaction should have non-zero fiat input amount in transaction: {:?}",
+            tx.extra_info(),
+            tx
+        ));
+    }
+
+    if output_token.is_fiat() {
+        return Err(format!(
+            "Context: {}; Invoice transaction does not support fiat output, found in transaction: {:?}",
+            tx.extra_info(),
+            tx
+        ));
+    }
+
+    if output_amount.is_zero() {
+        return Err(format!(
+            "Context: {}; Invoice transaction should have non-zero output amount in transaction: {:?}",
+            tx.extra_info(),
+            tx
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_swap_transaction(tx: &Transaction) -> Result<(), String> {
+    let (input_token, input_amount) = tx.input();
+    let (output_token, output_amount) = tx.output();
+
+    if input_token.is_fiat() {
+        return Err(format!(
+            "Context: {}; Swap transaction should not have fiat input, found {:?} in transaction: {:?}",
+            tx.extra_info(),
+            input_token,
+            tx
+        ));
+    }
+
+    if input_amount.is_zero() {
+        return Err(format!(
+            "Context: {}; Swap transaction should have non-zero input amount in transaction: {:?}",
+            tx.extra_info(),
+            tx
+        ));
+    }
+
+    if output_token.is_fiat() {
+        return Err(format!(
+            "Context: {}; Swap transaction should not have fiat output, found {:?} in transaction: {:?}",
+            tx.extra_info(),
+            output_token,
+            tx
+        ));
+    }
+
+    if output_amount.is_zero() {
+        return Err(format!(
+            "Context: {}; Swap transaction should have non-zero output amount in transaction: {:?}",
+            tx.extra_info(),
+            tx
+        ));
+    }
+
+    if input_token == output_token {
+        return Err(format!(
+            "Context: {}; Swap transaction should have different input and output tokens, found {:?} in transaction: {:?}",
+            tx.extra_info(),
+            input_token,
+            tx
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_buy_transaction(tx: &Transaction) -> Result<(), String> {
+    let (input_token, input_amount) = tx.input();
+    let (output_token, output_amount) = tx.output();
+
+    if !input_token.is_fiat() {
+        return Err(format!(
+            "Context: {}; Buy transaction should have fiat (EUR) input, found {:?} in transaction: {:?}",
+            tx.extra_info(),
+            input_token,
+            tx
+        ));
+    }
+
+    if input_amount.is_zero() {
+        return Err(format!(
+            "Context: {}; Buy transaction should have non-zero fiat input amount in transaction: {:?}",
+            tx.extra_info(),
+            tx
+        ));
+    }
+
+    if output_token.is_fiat() {
+        return Err(format!(
+            "Context: {}; Buy transaction should not have fiat output, found {:?} in transaction: {:?}",
+            tx.extra_info(),
+            output_token,
+            tx
+        ));
+    }
+
+    if output_amount.is_zero() {
+        return Err(format!(
+            "Context: {}; Buy transaction should have non-zero output amount in transaction: {:?}",
+            tx.extra_info(),
+            tx
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_selling_transaction(tx: &Transaction) -> Result<(), String> {
+    let (input_token, input_amount) = tx.input();
+    let (output_token, _output_amount) = tx.output();
+
+    if input_token.is_fiat() {
+        return Err(format!(
+            "Context: {}; Sell transaction should not have fiat input, found {:?} in transaction: {:?}",
+            tx.extra_info(),
+            input_token,
+            tx
+        ));
+    }
+
+    if input_amount.is_zero() {
+        return Err(format!(
+            "Context: {}; Sell transaction should have non-zero input amount in transaction: {:?}",
+            tx.extra_info(),
+            tx
+        ));
+    }
+
+    if !output_token.is_fiat() {
+        return Err(format!(
+            "Context: {}; Sell transaction should have fiat (EUR) output, found {:?} in transaction: {:?}",
+            tx.extra_info(),
+            output_token,
+            tx
+        ));
+    }
+
+    // It is ok to have zero output amount, that is used to represent things like fees.
 
     Ok(())
 }

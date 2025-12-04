@@ -76,25 +76,11 @@ pub struct InventoryItem {
     sale_price: Option<Decimal>,
     /// Parent transaction Id, if this item uses assets from another transaction.
     parent_tx: Option<usize>,
-    /// Whether the item is part of a 'sequence' of transactions which originated with a zero-cost basis transaction.
-    is_zero_cost: bool,
+    /// Whether the asset was acquired via interest.
+    is_interest: bool,
 }
 
 impl InventoryItem {
-    /// Check whether the inventory items is part of a 'sequence' of transactions
-    /// which originated with a zero-cost basis transaction like an airdrop or interest.
-    pub fn is_zero_cost(&self) -> bool {
-        self.is_zero_cost
-    }
-
-    /// `true` if the item is the first in the sequence, `false` otherwise.
-    ///
-    /// First item in the sequence is the one that resulted in first acquisition of the asset.
-    /// E.g. this can be an invoice, interest or airdrop.
-    pub fn is_first_in_sequence(&self) -> bool {
-        self.parent_tx.is_none()
-    }
-
     /// Cost basis of the asset.
     pub fn cost_basis(&self) -> Decimal {
         self.cost_basis
@@ -117,25 +103,9 @@ impl InventoryItem {
     /// Profit of the transaction.
     /// If the asset was not sold yet, return `None`.
     pub fn profit(&self) -> Option<Decimal> {
-        if let Some(zero_cost_income) = self.zero_cost_income() {
-            Some(zero_cost_income)
-        } else {
-            match (self.income(), self.expense()) {
-                (Some(income), Some(expense)) => Some(income - expense),
-                _ => None,
-            }
-        }
-    }
-
-    /// Income of the 'zero-cost' asset acquisition.
-    /// Covers case when asset was acquired via e.g. an airdrop or interest.
-    ///
-    /// Returns `None` if the item is not zero-cost or if it's not the first in the sequence.
-    pub fn zero_cost_income(&self) -> Option<Decimal> {
-        if self.is_zero_cost() && self.is_first_in_sequence() {
-            Some(self.output_amount * self.cost_basis)
-        } else {
-            None
+        match (self.income(), self.expense()) {
+            (Some(income), Some(expense)) => Some(income - expense),
+            _ => None,
         }
     }
 
@@ -217,11 +187,9 @@ impl InventoryItem {
         let output_type = format!("{}", tx.output().0);
         let output_amount = format!("{}", self.output_amount);
 
-        let income_amount = match (self.income(), self.zero_cost_income()) {
-            (Some(income), None) => Some(format!("{}", income)),
-            (None, Some(zero_cost_income)) => Some(format!("{}", zero_cost_income)),
-            (None, None) => None,
-            (Some(_), Some(_)) => panic!("Must never happen"),
+        let income_amount = match self.income() {
+            Some(income) => Some(format!("{}", income)),
+            None => None,
         };
 
         let expense_amount = match self.expense() {
@@ -372,13 +340,14 @@ impl<'a> Ledger<'a> {
                 report.add_sell_income(income);
             }
 
-            if let Some(zero_cost_income) = item.zero_cost_income() {
-                report.add_interest_income(zero_cost_income);
-            }
-
             // If expense from asset selling exists, add it to the report.
             if let Some(expense) = item.expense() {
                 report.add_expense(expense);
+            }
+
+            // If the item was acquired via interest, add its income to the report.
+            if item.is_interest {
+                report.add_interest_income(item.input_amount);
             }
         }
 
@@ -411,32 +380,20 @@ impl<'a> Ledger<'a> {
     /// Add a new transaction to the ledger.
     fn add_transaction(&mut self, transaction: &Transaction) {
         match transaction.tx_type() {
-            TransactionType::Buying | TransactionType::Invoice => {
-                self.process_buying(transaction);
+            TransactionType::Buying | TransactionType::Invoice | TransactionType::Interest => {
+                self.process_inflow(transaction);
             }
-            TransactionType::Selling
-            | TransactionType::Fees
-            | TransactionType::Nft
-            | TransactionType::Swap
-            | TransactionType::Lock => {
-                self.process_selling_or_swap(transaction);
-            }
-            TransactionType::Interest | TransactionType::Airdrop => {
-                self.process_interest(transaction);
-            }
-            TransactionType::Bridge => {
-                self.process_transfer(transaction);
+            TransactionType::Selling | TransactionType::Swap => {
+                self.process_swap_or_outflow(transaction);
             }
         }
     }
 
-    /// Process a transaction which involves trading fiat for crypto.
-    fn process_buying(&mut self, transaction: &Transaction) {
+    /// Process a transaction which involves acquiring new crypto assets.
+    /// Input, regardless of the type, is always fiat (EUR).
+    fn process_inflow(&mut self, transaction: &Transaction) {
         let (input_token, input_amount) = transaction.input();
         let (output_token, output_amount) = transaction.output();
-
-        // TODO: provide a dedicated function to handle inner ledger manipulation.
-        // This should be especially useful when finding an entry.
 
         let entry = self.ledger.entry(output_token.clone()).or_default();
 
@@ -452,16 +409,16 @@ impl<'a> Ledger<'a> {
             remaining_amount: output_amount,
             cost_basis: transaction
                 .cost_basis()
-                .expect("Must be non-zero for buying transaction."),
+                .expect("Validation ensures this is non-zero for Buy transaction."),
             sale_price: None,
             parent_tx: None,
-            is_zero_cost: false,
+            is_interest: transaction.tx_type() == TransactionType::Interest,
         };
         entry.push(item);
     }
 
     /// Process a transaction which involves selling crypto for fiat or a swap.
-    fn process_selling_or_swap(&mut self, transaction: &Transaction) {
+    fn process_swap_or_outflow(&mut self, transaction: &Transaction) {
         let (input_token, input_amount) = transaction.input();
         let (output_token, output_amount) = transaction.output();
 
@@ -510,13 +467,12 @@ impl<'a> Ledger<'a> {
                 new_amount
             };
 
-            // TODO: docs
             let new_cost_basis = if output_token.is_fiat() {
                 item.cost_basis()
             } else {
                 transaction
                     .cost_basis()
-                    .expect("Cannot fail, improve later")
+                    .expect("Validation must ensure that non-sell transactions have cost basis.")
                     * item.cost_basis()
             };
 
@@ -533,7 +489,7 @@ impl<'a> Ledger<'a> {
                 cost_basis: new_cost_basis,
                 sale_price: transaction.sale_price(),
                 parent_tx: Some(transaction.ordinal() as usize),
-                is_zero_cost: item.is_zero_cost(),
+                is_interest: false,
             };
 
             new_items.push(new_item);
@@ -553,55 +509,5 @@ impl<'a> Ledger<'a> {
             .entry(output_token.clone())
             .or_default()
             .extend(new_items);
-    }
-
-    /// Process a transaction which involves receiving interest or an airdrop.
-    /// This is a zero cost basis transaction.
-    fn process_interest(&mut self, transaction: &Transaction) {
-        let (output_token, output_amount) = transaction.output();
-
-        self.ledger
-            .entry(output_token.clone())
-            .or_default()
-            .push(InventoryItem {
-                ordinal: transaction.ordinal(),
-                date: transaction.date(),
-                acquisition_date: transaction.date(),
-                input_type: AssetType::EUR(),
-                input_amount: Decimal::ZERO,
-                output_type: output_token.clone(),
-                output_amount,
-                remaining_amount: output_amount,
-                cost_basis: transaction
-                    .cost_basis()
-                    .expect("Must be validated earlier."),
-                sale_price: None,
-                parent_tx: None,
-                is_zero_cost: true,
-            });
-    }
-
-    // TODO: Remove `Bridge` and just treat it as sell. Need to update docs.
-    fn process_transfer(&mut self, transaction: &Transaction) {
-        let (input_type, input_amount) = transaction.input();
-        let (output_type, output_amount) = transaction.output();
-
-        if input_type == output_type {
-            let dummy_tx = Transaction::new(
-                transaction.ordinal(),
-                transaction.date(),
-                transaction.tx_type(),
-                input_type,
-                input_amount - output_amount,
-                AssetType::EUR(),
-                Decimal::ZERO,
-                transaction.note().to_string(),
-                transaction.extra_info().to_string(),
-            );
-
-            self.process_selling_or_swap(&dummy_tx);
-        } else {
-            self.process_selling_or_swap(transaction);
-        }
     }
 }

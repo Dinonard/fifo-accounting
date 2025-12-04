@@ -28,20 +28,10 @@ pub enum TransactionType {
     Swap,
     /// Interest received for holding an asset.
     Interest,
-    /// Buying an asset with fiat.
+    /// Buy an asset with fiat.
     Buying,
-    /// Selling an asset for fiat.
+    /// Sell an asset for fiat.
     Selling,
-    /// Asset was moved between two different blockchains, resulting in some tangible loss.
-    Bridge,
-    /// Non-fungible token was bought or sold.
-    Nft,
-    /// Asset was received as part of an airdrop.
-    Airdrop,
-    /// Asset was locked or unlocked in some protocol.
-    Lock,
-    /// Fees paid to execute transactions
-    Fees,
 }
 
 impl FromStr for TransactionType {
@@ -54,20 +44,8 @@ impl FromStr for TransactionType {
             "interest" => Ok(TransactionType::Interest),
             "buying" => Ok(TransactionType::Buying),
             "selling" => Ok(TransactionType::Selling),
-            "bridge" => Ok(TransactionType::Bridge),
-            "nft" => Ok(TransactionType::Nft),
-            "airdrop" => Ok(TransactionType::Airdrop),
-            "lock" => Ok(TransactionType::Lock),
-            "fees" => Ok(TransactionType::Fees),
             _ => Err(()),
         }
-    }
-}
-
-impl TransactionType {
-    /// Check if the transaction is 'zero-cost', meaning that some asset was acquired for **zero** fiat amount.
-    pub fn is_zero_cost(&self) -> bool {
-        matches!(self, Self::Interest | Self::Airdrop)
     }
 }
 
@@ -83,35 +61,25 @@ impl Display for TransactionType {
 /// Asset type is always in uppercase.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct AssetType(String);
-// TODO: change from enum to this struct resulted in adding lots of 'clone' calls
-// which is ugly & inefficient. Come up with a better solution later.
-
 impl AssetType {
     /// Check if the asset is a fiat currency.
+    /// Right now only EUR is supported as fiat.
     pub fn is_fiat(&self) -> bool {
-        matches!(&self.0[..], "USD" | "EUR")
+        matches!(&self.0[..], "EUR")
     }
 
     /// Check if the asset is a cryptocurrency.
     pub fn is_crypto(&self) -> bool {
         !self.is_fiat() && !self.0.is_empty()
-    }
-
-    /// Check if the asset is a stablecoin.
-    pub fn is_stablecoin(&self) -> bool {
-        matches!(&self.0[..], "USDC" | "USDT")
-    }
+   }
 
     /// Consume self, return inner string.
     pub fn inner(self) -> String {
         self.0
     }
 
-    // TODO: improvement idea - add some sort of getters for some asset types,
-    // make them efficient (shouldn't be initialized each time?)
-    #[allow(non_snake_case)]
-    pub fn EUR() -> Self {
-        AssetType("EUR".to_string())
+    pub fn is_euro(&self) -> bool {
+        self.0 == "EUR"
     }
 }
 
@@ -144,7 +112,7 @@ pub struct Transaction {
     ordinal: u32,
     /// Date on which the transaction was made.
     date: NaiveDate,
-    /// Type of transaction (e.g. selling or a swap)
+    /// Type of transaction (e.g. Sell or a swap)
     tx_type: TransactionType,
     /// Type of the input token.
     input_type: AssetType,
@@ -156,7 +124,6 @@ pub struct Transaction {
     output_amount: Decimal,
     /// Free text note about the transaction.
     note: String,
-    // TODO: Think of a more compact solution, this seems wasteful, allocating different strings for each transaction.
     /// Transaction context, to help with error messages (e.g. filename, sheet, row).
     extra_info: String,
 }
@@ -250,12 +217,6 @@ impl Transaction {
         } else {
             Some(self.output_amount / self.input_amount)
         }
-    }
-
-    /// Check if the transaction is 'zero-cost', meaning that some asset was
-    /// acquired for **zero** fiat amount. E.g. interest received or an airdrop.
-    pub fn is_zero_cost(&self) -> bool {
-        self.tx_type.is_zero_cost()
     }
 }
 

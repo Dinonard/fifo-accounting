@@ -62,6 +62,22 @@ impl XlsxParser {
                 .last()
                 .expect("File was opened hence it should have a name");
 
+            // If possible, check if the first row above start row has an ordinal number.
+            // If it does, print a warning to the user that their config might be skipping data.
+            if row_number > 0 {
+                if let Some(row) = range.rows().nth(start_row.saturating_sub(1)) {
+                    if let Some(Data::Float(_)) = row.get(0) {
+                        log::warn!(
+                            "The row before the specified start row ({}) in file: '{}', sheet: '{}' has an ordinal number. \
+                            Please check if your config is correct and not skipping any data.",
+                            start_row,
+                            file_name,
+                            sheet_name
+                        );
+                    }
+                }
+            }
+
             let mut transactions = Vec::new();
 
             // 1. Iterate over the rows, and validate data.
