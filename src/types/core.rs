@@ -10,14 +10,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    fmt::{self, Display, Formatter},
-    str::FromStr,
-    ops::Deref,
-};
-use serde::Deserialize;
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
+use serde::Deserialize;
+use std::{
+    fmt::{self, Display, Formatter},
+    ops::Deref,
+    str::FromStr,
+};
 
 /// Type of transactions that modify the balance of any asset in the 'ledger'.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -51,7 +51,7 @@ impl FromStr for TransactionType {
 
 impl Display for TransactionType {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -71,15 +71,11 @@ impl AssetType {
     /// Check if the asset is a cryptocurrency.
     pub fn is_crypto(&self) -> bool {
         !self.is_fiat() && !self.0.is_empty()
-   }
+    }
 
     /// Consume self, return inner string.
     pub fn inner(self) -> String {
         self.0
-    }
-
-    pub fn is_euro(&self) -> bool {
-        self.0 == "EUR"
     }
 }
 
@@ -122,8 +118,6 @@ pub struct Transaction {
     output_type: AssetType,
     /// Amount of the output token.
     output_amount: Decimal,
-    /// Free text note about the transaction.
-    note: String,
     /// Transaction context, to help with error messages (e.g. filename, sheet, row).
     extra_info: String,
 }
@@ -138,7 +132,6 @@ impl Transaction {
         input_amount: Decimal,
         output_type: AssetType,
         output_amount: Decimal,
-        note: String,
         extra_info: String,
     ) -> Self {
         Transaction {
@@ -149,7 +142,6 @@ impl Transaction {
             input_amount,
             output_type,
             output_amount,
-            note,
             extra_info,
         }
     }
@@ -185,26 +177,21 @@ impl Transaction {
         (self.output_type.clone(), self.output_amount)
     }
 
-    /// Free text note about the transaction.
-    pub fn note(&self) -> &str {
-        &self.note
-    }
-
     /// Transaction context, to help with error messages (e.g. filename, sheet, row).
     pub fn extra_info(&self) -> &str {
         &self.extra_info
     }
 
-    // TODO: Remove <Option> - if it's zero, treat it as zero cost basis? Validator should ensure this value makes sense.
-    // Also, we can use a trait for transactions which can satisfy this case.
     /// Cost basis of the transaction.
     /// This is the price at which the output token was acquired.
     /// E.g. if 1.5 BTC was bought for 750 USD, the cost basis is 500 USD.
-    pub fn cost_basis(&self) -> Option<Decimal> {
+    ///
+    /// NOTE: In case output token is fiat, cost basis is 0.
+    pub fn cost_basis(&self) -> Decimal {
         if self.output_amount == Decimal::ZERO {
-            None
+            Decimal::ZERO
         } else {
-            Some(self.input_amount / self.output_amount)
+            self.input_amount / self.output_amount
         }
     }
 

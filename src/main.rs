@@ -11,11 +11,12 @@
 // limitations under the License.
 
 mod fifo;
+mod parser;
+mod types;
 mod validation;
-mod xlsx_parser;
 
+use crate::parser::xlsx_parser::{XlsxFileEntry, XlsxParser};
 use types::{CsvHelper, TransactionsProvider};
-use xlsx_parser::{XlsxFileEntry, XlsxParser};
 
 use clap::Parser;
 use env_logger::Env;
@@ -98,6 +99,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("FIFO breakdown written to file: {}", cmd_args.fifo_output);
 
     log::info!("Thank you so much for using this program!");
+    log::info!("And remember:");
+    log::info!("{}", GREETING);
     Ok(())
 }
 
@@ -108,3 +111,10 @@ struct Config {
     /// List of entries to parse.
     entries: Vec<XlsxFileEntry>,
 }
+
+const GREETING: &str = r#"
+.-. . .. .   .-.         .-.         
+`-.-|-.| |   | :.-. . .  | |.-..-,   
+`-' '-''-'-  '-'`-`-'-|  `-'' '`'-
+                    `-'
+"#;

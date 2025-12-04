@@ -10,7 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::Transaction;
+use crate::types::Transaction;
 
 pub type ParserDataType = Result<Vec<Transaction>, Box<dyn std::error::Error>>;
 
@@ -21,7 +21,7 @@ pub type ParserDataType = Result<Vec<Transaction>, Box<dyn std::error::Error>>;
 /// * Each transaction is valid on its own.
 /// * Transactions are in order - dates have to be monotonically increasing.
 pub trait DataParser: Iterator<Item = ParserDataType> {}
-impl <T: Iterator<Item = ParserDataType>> DataParser for T {}
+impl<T: Iterator<Item = ParserDataType>> DataParser for T {}
 
 /// Provider of transactions for the FIFO calculation.
 ///

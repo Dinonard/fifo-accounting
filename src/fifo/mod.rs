@@ -38,7 +38,7 @@
 //!
 //! The input amount of the original transaction & the output amount of the swap are fragmented in the same way.
 
-use types::{AssetType, CsvLineData, Transaction, TransactionType};
+use crate::types::{AssetType, CsvLineData, Transaction, TransactionType};
 
 use chrono::{Datelike, NaiveDate};
 use itertools::Itertools;
@@ -187,20 +187,11 @@ impl InventoryItem {
         let output_type = format!("{}", tx.output().0);
         let output_amount = format!("{}", self.output_amount);
 
-        let income_amount = match self.income() {
-            Some(income) => Some(format!("{}", income)),
-            None => None,
-        };
+        let income_amount = self.income().map(|income| format!("{income}"));
 
-        let expense_amount = match self.expense() {
-            Some(expense) => Some(format!("{}", expense)),
-            None => None,
-        };
+        let expense_amount = self.expense().map(|expense| format!("{expense}"));
 
-        let profit = match self.profit() {
-            Some(profit) => Some(format!("{}", profit)),
-            None => None,
-        };
+        let profit = self.profit().map(|profit| format!("{profit}"));
 
         CsvLine {
             ordinal,
@@ -354,7 +345,7 @@ impl<'a> Ledger<'a> {
         total_report
             .into_iter()
             .sorted_by_key(|(year, _)| *year)
-            .map(|(_, report)| format!("{}", report))
+            .map(|(_, report)| format!("{report}"))
             .collect()
     }
 
@@ -407,9 +398,7 @@ impl<'a> Ledger<'a> {
             output_type: output_token,
             output_amount,
             remaining_amount: output_amount,
-            cost_basis: transaction
-                .cost_basis()
-                .expect("Validation ensures this is non-zero for Buy transaction."),
+            cost_basis: transaction.cost_basis(),
             sale_price: None,
             parent_tx: None,
             is_interest: transaction.tx_type() == TransactionType::Interest,
@@ -470,10 +459,7 @@ impl<'a> Ledger<'a> {
             let new_cost_basis = if output_token.is_fiat() {
                 item.cost_basis()
             } else {
-                transaction
-                    .cost_basis()
-                    .expect("Validation must ensure that non-sell transactions have cost basis.")
-                    * item.cost_basis()
+                transaction.cost_basis() * item.cost_basis()
             };
 
             let new_item = InventoryItem {

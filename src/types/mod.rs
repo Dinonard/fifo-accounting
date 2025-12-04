@@ -14,6 +14,6 @@ mod core;
 mod csv;
 mod parser;
 
-pub use core::{TransactionType, AssetType, Transaction};
-pub use parser::{DataParser, ParserDataType, TransactionsProvider};
-pub use csv::{CsvLineData, CsvHelper};
+pub use core::{AssetType, Transaction, TransactionType};
+pub use csv::{CsvHelper, CsvLineData};
+pub use parser::{ParserDataType, TransactionsProvider};

@@ -61,7 +61,7 @@ pub struct CsvHelper<T: CsvLineData> {
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl <T: CsvLineData> CsvHelper<T> {
+impl<T: CsvLineData> CsvHelper<T> {
     const HEADER_ELEMENTS: [&'static str; 11] = [
         "Ordinal",
         "Transaction Date",
@@ -96,7 +96,7 @@ impl <T: CsvLineData> CsvHelper<T> {
 
     /// Full CSV header, as a single string.
     pub fn csv_header(&self) -> String {
-        self.csv_header_elements().join(&self.delimiter())
+        self.csv_header_elements().join(self.delimiter())
     }
 
     /// Convert the data to a single line in the CSV file.
@@ -110,14 +110,18 @@ impl <T: CsvLineData> CsvHelper<T> {
             data.input_amount().into_owned(),
             data.output_type().into_owned(),
             data.output_amount().into_owned(),
-            data.income_amount().map(|x| x.into_owned()).unwrap_or_default(),
-            data.expense_amount().map(|x| x.into_owned()).unwrap_or_default(),
+            data.income_amount()
+                .map(|x| x.into_owned())
+                .unwrap_or_default(),
+            data.expense_amount()
+                .map(|x| x.into_owned())
+                .unwrap_or_default(),
             data.profit().map(|x| x.into_owned()).unwrap_or_default(),
         ]
     }
 
     /// Convert the data to a single line in the CSV file.
     pub fn to_csv_line(&self, data: T) -> String {
-        self.to_csv_line_elements(data).join(&self.delimiter())
+        self.to_csv_line_elements(data).join(self.delimiter())
     }
 }

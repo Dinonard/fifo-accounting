@@ -14,7 +14,7 @@ use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use std::collections::{hash_map::Entry, HashMap};
 
-use types::{AssetType, Transaction, TransactionType};
+use crate::types::{AssetType, Transaction, TransactionType};
 
 /// Validate the transactions, and return the final state of the ledger.
 /// There are several checks performed:
